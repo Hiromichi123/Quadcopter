@@ -39,6 +39,6 @@ public:
     void set_time(rclcpp::Time time) {twist_stamped.header.stamp = time;}
 
 protected:
-    geometry_msgs::msg::TwistStamped twist_stamped;
+    geometry_msgs::msg::TwistStamped twist_stamped{};
 };
 #endif

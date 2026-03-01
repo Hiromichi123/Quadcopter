@@ -8,7 +8,7 @@
 // 目标点类
 class Target {
 public:
-    mutable bool reached; // 是否到达目标点
+    mutable bool reached{}; // 是否到达目标点
 
     Target() : reached(false) {}
     
@@ -54,6 +54,6 @@ public:
     void set_time(rclcpp::Time time) { pose_stamped.header.stamp = time; }
 
 private:
-    geometry_msgs::msg::PoseStamped pose_stamped;
+    geometry_msgs::msg::PoseStamped pose_stamped{};
 };
 #endif

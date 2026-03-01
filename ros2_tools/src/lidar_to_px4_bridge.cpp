@@ -13,8 +13,7 @@ public:
   }
 
 private:
-  void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
-  {
+  void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
     auto vision_pose = geometry_msgs::msg::PoseStamped();
     // 设置时间戳
     vision_pose.header.stamp = this->now();
@@ -35,8 +34,7 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr vision_pose_pub;
 };
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<LidarToPx4Bridge>());
   rclcpp::shutdown();

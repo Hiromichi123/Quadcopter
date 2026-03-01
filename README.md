@@ -33,22 +33,44 @@
 ## 🏗️ 系统架构
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Quadcopter System                 │
-├─────────────────┬───────────────┬───────────────────┤
-│   Core (C++版)  │  Core_rs      │   Vision (Py)     │
-│   飞行控制       │  (Rust版)     │   视觉识别        │
-│   状态管理       │  高性能控制    │   图像处理        │
-├─────────────────┴───────────────┴───────────────────┤
-│            ROS2 Communication Layer                 │
-│         (Topics, Services, Parameters)              │
-├─────────────────────────────────────────────────────┤
-│                 MAVROS Interface                    │
-│                (MAVLink Protocol)                   │
-├─────────────────────────────────────────────────────┤
-│                Flight Controller                    │
-│                  (PX4/ArduPilot)                    │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      Quadcopter System                      │
+├──────────────┬──────────────┬──────────────┬───────────────┤
+│ core (C++旧) │ core_2026    │  core_rs     │  vision_py    │
+│ 飞行控制      │ 重构分层架构  │  (Rust版)    │  视觉识别      │
+│ 状态管理      │ 见下方架构图  │  高性能控制  │  图像处理      │
+├──────────────┴──────────────┴──────────────┴───────────────┤
+│                  ROS2 Communication Layer                   │
+│              (Topics, Services, Parameters)                 │
+├─────────────────────────────────────────────────────────────┤
+│                      MAVROS Interface                       │
+│                     (MAVLink Protocol)                      │
+├─────────────────────────────────────────────────────────────┤
+│                      Flight Controller                      │
+│                        (PX4/ArduPilot)                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### core_2026 内部分层架构
+
+```
+┌──────────────────────────────────────────────────────┐
+│  layer4_system/   系统编排层                          │
+│  DroneSystem · 生命周期管理 · pre_flight_checks()     │
+├──────────────────────────────────────────────────────┤
+│  layer3_mission/  任务执行层                          │
+│  MissionExecutor · enum class 状态机                 │
+├──────────────────────────────────────────────────────┤
+│  layer2_control/  飞行控制层                          │
+│  FlightController · PidController（可配置增益）       │
+├──────────────────────────────────────────────────────┤
+│  layer1_hal/      硬件抽象层                          │
+│  DroneHAL（唯一 ROS2 Node）                           │
+│  IStateProvider · ICommandPublisher · IVisionProvider │
+├──────────────────────────────────────────────────────┤
+│  layer0_common/   公共数据类型层                      │
+│  DroneState · Target · Velocity · Path               │
+└──────────────────────────────────────────────────────┘
 ```
 
 ## ✨ 功能特性
@@ -90,7 +112,7 @@
 ### 1. 安装ROS2 Humble
 
 ```bash
-# 使用鱼香ROS一键安装（推荐）
+# 使用鱼香ROS一键安装（推荐新手）
 wget http://fishros.com/install -O fishros && bash fishros
 
 # 或访问官网手动安装
@@ -159,17 +181,49 @@ source ~/.bashrc
 
 ### core
 **语言**: C++  
-**功能**: 核心飞行控制模块
+**功能**: 核心飞行控制模块（原始版本，功能可用）
 
 - 飞行器状态管理
 - 基础控制算法
 - ROS2接口封装
 
-**依赖**: 
+> ⚠️ 已被 `core_2026` 重构替代，建议新开发基于 `core_2026`。
+
+**依赖**:
 - rclcpp
 - geometry_msgs
 - nav_msgs
 - mavros_msgs
+
+---
+
+### core_2026
+**语言**: C++17及以上
+**功能**: 核心飞行控制模块（重构版，分层解耦架构）
+
+采用 **5层架构 + SOLID 原则** 完全重构，保留 `core` 全部功能，同时解决原版耦合问题：
+
+| 层 | 目录 | 职责 |
+|----|------|------|
+| 0 | `layer0_common/` | 纯数据类型，无 ROS 依赖 |
+| 1 | `layer1_hal/` | 硬件抽象，唯一 ROS2 Node，含接口定义 |
+| 2 | `layer2_control/` | 飞行控制器 + 独立可配置 PID |
+| 3 | `layer3_mission/` | 任务状态机，enum class 驱动 |
+| 4 | `layer4_system/` | 系统编排，生命周期管理 |
+
+**主要特性**:
+- `DroneHAL` 是唯一 `rclcpp::Node`，所有通信集中管理，回调有 `std::mutex` 保护
+- `FlightController` 不继承 Node，通过 `IStateProvider` / `ICommandPublisher` 接口注入
+- `PidController` 独立类，增益可运行时热更新，可独立单元测试
+- `MissionExecutor` 枚举状态机，每状态独立方法
+
+**可执行节点**:
+- `quad_node`: 完整飞行控制系统
+
+**依赖**:
+- rclcpp, geometry_msgs, nav_msgs, mavros_msgs, ros2_tools, vision_py
+
+**详细改进说明**: 见 [core_2026/REFACTOR.md](core_2026/REFACTOR.md)
 
 ### core_rs
 **语言**: Rust  
@@ -187,14 +241,10 @@ source ~/.bashrc
 - 视觉引导飞行
 
 **依赖**: 
-- rclrs
-- std_msgs
-- geometry_msgs
-- mavros_msgs
-- cv_tools
+- rclrs，std_msgs，geometry_msgs，mavros_msgs，cv_tools
 
 ### cv_tools
-**语言**: C++  
+**语言**: C++
 **功能**: 计算机视觉工具库
 
 - 自定义消息定义
@@ -202,13 +252,10 @@ source ~/.bashrc
 - RealSense相机支持
 
 **依赖**: 
-- sensor_msgs
-- cv_bridge
-- OpenCV
-- RealSense2
+- sensor_msgs，cv_bridge，OpenCV，RealSense2
 
 ### vision_py
-**语言**: Python  
+**语言**: Python
 **功能**: 视觉识别和图像处理
 
 - 目标检测
@@ -313,12 +360,24 @@ quadcopter/
 ├── install/                 # 安装文件（自动生成）
 ├── log/                     # 日志文件（自动生成）
 │
-├── core/                    # C++核心控制包
+├── core/                    # C++核心控制包（原始版）
 │   ├── CMakeLists.txt
 │   ├── package.xml
-│   ├── launch/              # Launch文件
-│   └── src/                 # 源代码
-│       └── classes/         # 类定义
+│   ├── launch/
+│   └── src/classes/
+│
+├── core_2026/               # C++核心控制包（重构版，推荐）
+│   ├── CMakeLists.txt
+│   ├── package.xml
+│   ├── REFACTOR.md          # 详细重构说明
+│   ├── launch/
+│   └── src/
+│       ├── main.cpp
+│       ├── layer0_common/   # 公共数据类型（无 ROS 依赖）
+│       ├── layer1_hal/      # 硬件抽象层（唯一 ROS2 Node）
+│       ├── layer2_control/  # 飞行控制 + PID
+│       ├── layer3_mission/  # 任务状态机
+│       └── layer4_system/   # 系统编排
 │
 ├── core_rs/                 # Rust核心控制包
 │   ├── Cargo.toml

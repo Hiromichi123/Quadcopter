@@ -21,15 +21,15 @@ class flight_controller;
 
 class quadcopter : public rclcpp::Node {
 public:
-    float x, y, z, yaw; // 全局位置
-    float vx, vy, vz; // 速度
-    float ax, ay, az; // 加速度
-    float roll, pitch; // 姿态角
-    float dr, dp; // 角速度
+    float x{}, y{}, z{}, yaw{}; // 全局位置
+    float vx{}, vy{}, vz{}; // 速度
+    float ax{}, ay{}, az{}; // 加速度
+    float roll{}, pitch{}; // 姿态角
+    float dr{}, dp{}; // 角速度
 
-    rclcpp::Clock steady_clock; // 持久化的稳态时钟
+    rclcpp::Clock steady_clock{}; // 持久化的稳态时钟
 
-    friend class flight_controller; // 为了保险
+    friend class flight_controller; // 保险
 
     quadcopter();
     void quad_init(); // 初始化quad节点控制流程

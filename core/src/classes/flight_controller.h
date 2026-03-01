@@ -24,8 +24,8 @@ public:
     void fly_by_path(Path* path); // 路径航点飞行，已兼容target版本
 
 private:
-    std::weak_ptr<quadcopter> quad_node; // 一个不参与生命周期的观察句柄
-    std::shared_ptr<rclcpp::Rate> rate;
+    std::weak_ptr<quadcopter> quad_node{}; // 一个不参与生命周期的观察句柄
+    std::shared_ptr<rclcpp::Rate> rate{};
 
     // 自身位置检查，distance为误差默认0.1
     bool pos_check(const Target& target, float distance = Default_Pos_Check_Distance);
