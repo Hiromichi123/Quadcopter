@@ -17,8 +17,8 @@ constexpr float DEFAULT_POS_CHECK_DISTANCE = 0.25f;
  * @brief XYZ轴 PID，供 fly_to_target_pid() 使用。
  */
 struct PidConfig {
-    PidGains xy{1.0f, 0.1f, 0.2f, 0.5f, 1.0f};  // XY 轴增益
-    PidGains z {1.5f, 0.2f, 0.1f, 0.3f, 0.5f};  // Z  轴增益
+    PidGains xy{1.0f, 0.1f, 0.2f, 0.5f, 0.0f};  // XY 轴增益，解除速度限制
+    PidGains z {1.5f, 0.2f, 0.1f, 0.3f, 0.0f};  // Z  轴增益，解除速度限制
 };
 
 /**
@@ -48,13 +48,13 @@ public:
     // 定点移动（阻塞）
     void fly_to_target(const Target& target,
                        float timeout_sec     = 10.0f,
-                       float stable_time_sec = 0.25f,
+                       float stable_time_sec = 0.1f,
                        int   frame_rate      = 30);
 
     /// 定点移动（PID 速度闭环）
     void fly_to_target_pid(const Target& target,
                            float timeout_sec     = 10.0f,
-                           float stable_time_sec = 0.25f,
+                           float stable_time_sec = 0.1f,
                            int   frame_rate      = 30);
 
     /// 速度飞行，单次发布

@@ -17,134 +17,146 @@ MissionExecutor::MissionExecutor(
     , vel_follow_(kFollowVx, 0.0f, 0.0f)
 {}
 
-// 主循环
+// 主循环 - 简化测试版本：起飞1米 → 前进1米 → 降落
 void MissionExecutor::run() {
-    RCLCPP_INFO(logger_, "[Mission] 任务开始，初始状态: TAKEOFF");
+    RCLCPP_INFO(logger_, "[Mission] 简化测试任务开始: 起飞1m → 前进1m → 降落");
     while (rclcpp::ok() && current_state_ != State::DONE) {
         switch (current_state_) {
             case State::TAKEOFF:     on_takeoff();     break;
             case State::FORWARD:     on_forward();     break;
-            case State::LINE_FOLLOW: on_line_follow(); break;
-            case State::ALIGN_SHAPE: on_align_shape(); break;
-            case State::RETURN_LINE: on_return_line(); break;
-            case State::ALIGN_LAND:  on_align_land();  break;
             case State::LAND:        on_land();        break;
+            // case State::LINE_FOLLOW: on_line_follow(); break;
+            // case State::ALIGN_SHAPE: on_align_shape(); break;
+            // case State::RETURN_LINE: on_return_line(); break;
+            // case State::ALIGN_LAND:  on_align_land();  break;
             case State::DONE:        break;
+            default:                 break;
         }
     }
     RCLCPP_INFO(logger_, "[Mission] 任务完成");
 }
 
-// 状态：TAKEOFF
+// 状态：TAKEOFF - 起飞到1米高度
 void MissionExecutor::on_takeoff() {
-    RCLCPP_INFO(logger_, "[TAKEOFF] 上升至 %.2f m", default_altitude_);
-    fc_.fly_to_target(takeoff_target_);
-    RCLCPP_INFO(logger_, "[TAKEOFF] 到达指定高度，切换 FORWARD");
+    RCLCPP_INFO(logger_, "[TAKEOFF] 上升至 1.0 m");
+    Target takeoff_1m(0.0f, 0.0f, 1.0f, 0.0f);
+    fc_.fly_to_target(takeoff_1m);
+    RCLCPP_INFO(logger_, "[TAKEOFF] 到达1米高度，切换 FORWARD");
     current_state_ = State::FORWARD;
 }
 
-// 状态：FORWARD
+// 状态：FORWARD - 前进1米后降落
 void MissionExecutor::on_forward() {
-    const auto v = vision_.get_vision();
-    if (v.is_line_detected) {
-        RCLCPP_INFO(logger_, "[FORWARD] 发现直线，切换 LINE_FOLLOW");
-        vel_follow_.set_vx(kFollowVx);
-        vel_follow_.set_vy(0.0f);
-        current_state_ = State::LINE_FOLLOW;
-        return;
-    }
-    Velocity fwd(kForwardVx, 0.0f, 0.0f);
-    fc_.fly_by_velocity(fwd);
-}
-
-// 状态：LINE_FOLLOW
-void MissionExecutor::on_line_follow() {
-    const auto v = vision_.get_vision();
+    RCLCPP_INFO(logger_, "[FORWARD] 前进1米");
     const auto s = state_.get_state();
-
-    // 视觉横向 & 角度修正
-    vel_follow_.set_vy(v.lateral_error / kLateralScale);
-    vel_follow_.set_vyaw(v.angle_error / kAngleScale);
-
-    // 高度保持
-    float z_err = default_altitude_ - s.z;
-    vel_follow_.set_vz(std::abs(z_err) > kAltDeadband ? z_err : 0.0f);
-
-    fc_.fly_by_velocity(vel_follow_);
-
-    if (v.is_square_detected && !is_cast_complete_) {
-        // 记录当前位置以便投掷后返回
-        shape_return_pos_.set_x(s.x);
-        shape_return_pos_.set_y(s.y);
-        shape_return_pos_.set_z(s.z);
-        shape_return_pos_.set_yaw(s.yaw);
-        RCLCPP_INFO(logger_, "[LINE_FOLLOW] 发现形状，记录位置 (%.2f, %.2f, %.2f)，切换 ALIGN_SHAPE",
-            s.x, s.y, s.z);
-        current_state_ = State::ALIGN_SHAPE;
-    } else if (v.is_circle_detected && is_cast_complete_) {
-        RCLCPP_INFO(logger_, "[LINE_FOLLOW] 发现降落区域，切换 ALIGN_LAND");
-        current_state_ = State::ALIGN_LAND;
-    }
+    Target forward_1m(s.x + 1.0f, s.y, 1.0f, s.yaw);
+    fc_.fly_to_target(forward_1m);
+    RCLCPP_INFO(logger_, "[FORWARD] 完成前进，切换 LAND");
+    current_state_ = State::LAND;
 }
 
-// 状态：ALIGN_SHAPE
-void MissionExecutor::on_align_shape() {
-    const auto v = vision_.get_vision();
-    const auto s = state_.get_state();
+// // 原始复杂逻辑已注释
+// void MissionExecutor::on_forward() {
+//     const auto v = vision_.get_vision();
+//     if (v.is_line_detected) {
+//         RCLCPP_INFO(logger_, "[FORWARD] 发现直线，切换 LINE_FOLLOW");
+//         vel_follow_.set_vx(kFollowVx);
+//         vel_follow_.set_vy(0.0f);
+//         current_state_ = State::LINE_FOLLOW;
+//         return;
+//     }
+//     Velocity fwd(kForwardVx, 0.0f, 0.0f);
+//     fc_.fly_by_velocity(fwd);
+// }
 
-    Velocity align_v(
-        v.center_x1_error / kLateralScale,
-        v.center_y1_error / kLateralScale,
-        0.0f, 0.0f);
+// // 状态：LINE_FOLLOW - 已注释，测试版本不使用
+// void MissionExecutor::on_line_follow() {
+//     const auto v = vision_.get_vision();
+//     const auto s = state_.get_state();
+//
+//     // 视觉横向 & 角度修正
+//     vel_follow_.set_vy(v.lateral_error / kLateralScale);
+//     vel_follow_.set_vyaw(v.angle_error / kAngleScale);
+//
+//     // 高度保持
+//     float z_err = default_altitude_ - s.z;
+//     vel_follow_.set_vz(std::abs(z_err) > kAltDeadband ? z_err : 0.0f);
+//
+//     fc_.fly_by_velocity(vel_follow_);
+//
+//     if (v.is_square_detected && !is_cast_complete_) {
+//         // 记录当前位置以便投掷后返回
+//         shape_return_pos_.set_x(s.x);
+//         shape_return_pos_.set_y(s.y);
+//         shape_return_pos_.set_z(s.z);
+//         shape_return_pos_.set_yaw(s.yaw);
+//         RCLCPP_INFO(logger_, "[LINE_FOLLOW] 发现形状，记录位置 (%.2f, %.2f, %.2f)，切换 ALIGN_SHAPE",
+//             s.x, s.y, s.z);
+//         current_state_ = State::ALIGN_SHAPE;
+//     } else if (v.is_circle_detected && is_cast_complete_) {
+//         RCLCPP_INFO(logger_, "[LINE_FOLLOW] 发现降落区域，切换 ALIGN_LAND");
+//         current_state_ = State::ALIGN_LAND;
+//     }
+// }
 
-    float z_err = default_altitude_ - s.z;
-    align_v.set_vz(std::abs(z_err) > kAltDeadband ? z_err : 0.0f);
+// // 状态：ALIGN_SHAPE - 已注释，测试版本不使用
+// void MissionExecutor::on_align_shape() {
+//     const auto v = vision_.get_vision();
+//     const auto s = state_.get_state();
+//
+//     Velocity align_v(
+//         v.center_x1_error / kLateralScale,
+//         v.center_y1_error / kLateralScale,
+//         0.0f, 0.0f);
+//
+//     float z_err = default_altitude_ - s.z;
+//     align_v.set_vz(std::abs(z_err) > kAltDeadband ? z_err : 0.0f);
+//
+//     fc_.fly_by_velocity(align_v);
+//
+//     if (std::abs(v.center_x1_error) < kAlignThreshold &&
+//         std::abs(v.center_y1_error) < kAlignThreshold)
+//     {
+//         RCLCPP_INFO(logger_, "[ALIGN_SHAPE] 对准成功，执行投掷，切换 RETURN_LINE");
+//         // TODO: 触发投掷动作（舵机/GPIO 命令）
+//         is_cast_complete_ = true;
+//         current_state_    = State::RETURN_LINE;
+//     }
+// }
 
-    fc_.fly_by_velocity(align_v);
+// // 状态：RETURN_LINE - 已注释，测试版本不使用
+// void MissionExecutor::on_return_line() {
+//     RCLCPP_INFO(logger_, "[RETURN_LINE] 返回巡线位置");
+//     fc_.fly_to_target(shape_return_pos_);
+//     // 恢复巡线速度
+//     vel_follow_.set_vx(kFollowVx);
+//     vel_follow_.set_vy(0.0f);
+//     RCLCPP_INFO(logger_, "[RETURN_LINE] 完成，恢复 LINE_FOLLOW");
+//     current_state_ = State::LINE_FOLLOW;
+// }
 
-    if (std::abs(v.center_x1_error) < kAlignThreshold &&
-        std::abs(v.center_y1_error) < kAlignThreshold)
-    {
-        RCLCPP_INFO(logger_, "[ALIGN_SHAPE] 对准成功，执行投掷，切换 RETURN_LINE");
-        // TODO: 触发投掷动作（舵机/GPIO 命令）
-        is_cast_complete_ = true;
-        current_state_    = State::RETURN_LINE;
-    }
-}
-
-// 状态：RETURN_LINE
-void MissionExecutor::on_return_line() {
-    RCLCPP_INFO(logger_, "[RETURN_LINE] 返回巡线位置");
-    fc_.fly_to_target(shape_return_pos_);
-    // 恢复巡线速度
-    vel_follow_.set_vx(kFollowVx);
-    vel_follow_.set_vy(0.0f);
-    RCLCPP_INFO(logger_, "[RETURN_LINE] 完成，恢复 LINE_FOLLOW");
-    current_state_ = State::LINE_FOLLOW;
-}
-
-// 状态：ALIGN_LAND
-void MissionExecutor::on_align_land() {
-    const auto v = vision_.get_vision();
-    const auto s = state_.get_state();
-
-    Velocity align_v(
-        v.center_x2_error / kLateralScale,
-        v.center_y2_error / kLateralScale,
-        0.0f, 0.0f);
-
-    float z_err = default_altitude_ - s.z;
-    align_v.set_vz(std::abs(z_err) > kAltDeadband ? 0.03f * (z_err > 0 ? 1.f : -1.f) : 0.0f);
-
-    fc_.fly_by_velocity(align_v);
-
-    if (std::abs(v.center_x2_error) < kAlignThreshold &&
-        std::abs(v.center_y2_error) < kAlignThreshold)
-    {
-        RCLCPP_INFO(logger_, "[ALIGN_LAND] 对准成功，切换 LAND");
-        current_state_ = State::LAND;
-    }
-}
+// // 状态：ALIGN_LAND - 已注释，测试版本不使用
+// void MissionExecutor::on_align_land() {
+//     const auto v = vision_.get_vision();
+//     const auto s = state_.get_state();
+//
+//     Velocity align_v(
+//         v.center_x2_error / kLateralScale,
+//         v.center_y2_error / kLateralScale,
+//         0.0f, 0.0f);
+//
+//     float z_err = default_altitude_ - s.z;
+//     align_v.set_vz(std::abs(z_err) > kAltDeadband ? 0.03f * (z_err > 0 ? 1.f : -1.f) : 0.0f);
+//
+//     fc_.fly_by_velocity(align_v);
+//
+//     if (std::abs(v.center_x2_error) < kAlignThreshold &&
+//         std::abs(v.center_y2_error) < kAlignThreshold)
+//     {
+//         RCLCPP_INFO(logger_, "[ALIGN_LAND] 对准成功，切换 LAND");
+//         current_state_ = State::LAND;
+//     }
+// }
 
 // 状态：LAND
 void MissionExecutor::on_land() {

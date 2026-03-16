@@ -5,52 +5,72 @@ from launch.actions import TimerAction, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
+from launch.substitutions import PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
+    # 终端：ros2 run mavros mavros_node --ros-args -p fcu_url:=serial:///dev/ttyACM0:57600 -p tgt_system:=1 -p tgt_component:=1 -p fcu_protocol:=v2.0
+    mavros = Node(
+        package='mavros',
+        executable='mavros_node',
+        parameters=[{
+            'fcu_url': 'serial:///dev/ttyACM0:57600',
+            'tgt_system': 1,
+            'tgt_component': 1,
+            'fcu_protocol': 'v2.0'
+        }]
+    )
+
+    # 指令：ros2 launch livox_ros_driver2 msg_MID360_launch.py
+    livox_ros_driver = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory('livox_ros_driver2'), 'launch_ROS2', 'msg_MID360_launch.py')
+        ])
+    )
+
+    # 指令：ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 1 base_link livox_frame
+    tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="base_to_livox_tf",
+        arguments=["0", "0", "0", "0", "0", "0", "1", "base_link", "livox_frame"]
+    )
+
+    # 指令：ros2 launch point_lio point_lio.launch.py
+    slam = TimerAction(
+        period=5.0,  # 延迟 10s 启动 PointLIO
+        actions=[
+                IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([
+                    PathJoinSubstitution([
+                        FindPackageShare("point_lio"),
+                        "launch",
+                        "point_lio.launch.py"
+                    ])
+                ]),
+                launch_arguments={"rviz": "False"}.items(),
+            )
+        ]
+    )
+    
+    # ros2 run ros2_tools lidar_data_node
+    # ros2 run ros2_tools lidar_to_px4_bridge
     ros2_tools_nodes = [
-        'lidar_data_node',
-        'lidar_to_px4_node',
-        'ground_camera_node'
+        Node(package='ros2_tools', executable='lidar_data_node'),
+        Node(package='ros2_tools', executable='lidar_to_px4_bridge')
     ]
 
+    # ros2 run core_2026 quad_node
+    core = Node(
+        package='core_2026',
+        executable='quad_node',
+    )
+
     return launch.LaunchDescription([
-        Node(
-            package='mavros',
-            executable='mavros_node',
-            parameters=[{
-                'fcu_url': 'serial:///dev/ttyACM0:921600',
-                'tgt_system': 1,
-                'tgt_component': 1,
-                'fcu_protocol': 'v2.0'
-            }]
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                os.path.join(get_package_share_directory('livox_ros_driver2'), 'launch/msg_MID360_launch.py')
-            ])
-        ),
-        TimerAction(
-            period=10.0,  # 延迟 10s 启动 FastLIO
-            actions=[
-                IncludeLaunchDescription(
-                    PythonLaunchDescriptionSource([
-                        os.path.join(get_package_share_directory('fast_lio'), 'launch/mapping.launch.py')
-                    ]),
-                    launch_arguments={'rviz': 'false'}.items()
-                )
-            ]
-        ),
-        *[Node(
-            package='ros2_tools',
-            executable=node
-            ) for node in ros2_tools_nodes],
-        Node(
-            package='servo_control',
-            executable='servo_control',
-        ),
-        # 使用重构后的 core_2026 包
-        Node(
-            package='core_2026',
-            executable='quad_node',
-        )
+        mavros,
+        livox_ros_driver,
+        tf,
+        slam,
+        *ros2_tools_nodes,
+        core
     ])
