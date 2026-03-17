@@ -259,7 +259,7 @@ impl FlightController {
                         (lidar_pos.y - target.get_y()).powi(2) + 
                         (lidar_pos.z - target.get_z()).powi(2))
                         .sqrt();
-        let dyaw = lidar_pos.yaw - target.get_yaw().abs();
+        let dyaw = (lidar_pos.yaw - target.get_yaw()).abs();
         target.reached = distance < DEFAULT_POS_CHECK_DISTANCE && dyaw < 0.1;
         target.reached
     }
@@ -289,12 +289,15 @@ impl FlightController {
     pub async fn fly_by_vel_duration(&mut self, velocity: &mut Velocity, duration: f64, async_rx: Arc<RwLock<watch::Receiver<bool>>>) -> Result<()> {
         let start_time = SystemTime::now();
         let duration = Duration::from_secs_f64(duration);
-        let lidar_pos = self.lidar_pos.lock().unwrap();
-        let start_altitude = lidar_pos.z;
+        // BUG FIX: 先读取起始高度后立即释放锁，避免持锁跨越整个循环导致高度数据无法更新
+        let start_altitude = self.lidar_pos.lock().unwrap().z;
 
         while SystemTime::now().duration_since(start_time).unwrap() < duration {
-            // 修改z轴反馈
-            if (start_altitude - lidar_pos.z).abs() > 0.1 { velocity.set_vz(start_altitude - lidar_pos.z); }
+            // 每次循环重新读取当前高度，进行 z 轴高度保持反馈
+            let current_altitude = self.lidar_pos.lock().unwrap().z;
+            if (start_altitude - current_altitude).abs() > 0.1 {
+                velocity.set_vz(start_altitude - current_altitude);
+            }
             let _ = self.fly_by_velocity(velocity);
             self.executor
                 .lock()

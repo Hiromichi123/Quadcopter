@@ -21,10 +21,11 @@
 class LidarDataNode : public rclcpp::Node {
 public:
     LidarDataNode() : Node("lidar_data_node") {
-        // 启动参数配置
+        // 参数声明
         this->declare_parameter<bool>("use_simulation", false);
         this->declare_parameter<std::string>("simulation_odom_topic", "/absolute_pose");
         this->declare_parameter<std::string>("real_robot_odom_topic", "/aft_mapped_to_init");
+        // 获取参数值
         using_gazebo_ = this->get_parameter("use_simulation").as_bool();
         std::string sim_topic = this->get_parameter("simulation_odom_topic").as_string();
         std::string real_topic = this->get_parameter("real_robot_odom_topic").as_string();
