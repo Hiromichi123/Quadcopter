@@ -1,6 +1,8 @@
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
+#include <array>
+#include <cstddef>
 #include <memory>
 
 #include "layer2_control/flight_controller.hpp"
@@ -63,6 +65,7 @@ private:
     static constexpr float  kAltDeadband      = 0.05f;    // 高度死区
     static constexpr float  kLandVz           = -0.20f;   // 降落速度
     static constexpr float  kLandDuration     = 5.0f;     // 降落持续秒
+    static constexpr int    kWaypointCount    = 5;        // 航点数量
 
     // ===== 成员组 =====
     FlightController& fc_;
@@ -77,4 +80,8 @@ private:
     Target  takeoff_target_;   // 起飞目标点（高度 = default_altitude）
     Target  shape_return_pos_; // 发现形状时记录的位置（用于 RETURN_LINE）
     Velocity vel_follow_;      // 巡线速度指令（复用，避免重复构造）
+
+    std::array<Target, kWaypointCount> waypoints_{};
+    std::size_t waypoint_index_{0};
+    bool waypoints_initialized_{false};
 };

@@ -17,9 +17,9 @@ MissionExecutor::MissionExecutor(
     , vel_follow_(kFollowVx, 0.0f, 0.0f)
 {}
 
-// 主循环 - 简化测试版本：起飞1米 → 前进1米 → 降落
+// 主循环
 void MissionExecutor::run() {
-    RCLCPP_INFO(logger_, "[Mission] 简化测试任务开始: 起飞1m → 前进1m → 降落");
+    RCLCPP_INFO(logger_, "[Mission] 简化测试任务开始: 起飞 → 依次飞行5个航点 → 降落");
     while (rclcpp::ok() && current_state_ != State::DONE) {
         switch (current_state_) {
             case State::TAKEOFF:     on_takeoff();     break;
@@ -38,21 +38,49 @@ void MissionExecutor::run() {
 
 // 状态：TAKEOFF - 起飞到1米高度
 void MissionExecutor::on_takeoff() {
-    RCLCPP_INFO(logger_, "[TAKEOFF] 上升至 1.0 m");
-    Target takeoff_1m(0.0f, 0.0f, 1.0f, 0.0f);
-    fc_.fly_to_target(takeoff_1m);
-    RCLCPP_INFO(logger_, "[TAKEOFF] 到达1米高度，切换 FORWARD");
+    RCLCPP_INFO(logger_, "[TAKEOFF] 上升至 %.2f m", default_altitude_);
+    fc_.fly_to_target(takeoff_target_);
+    RCLCPP_INFO(logger_, "[TAKEOFF] 到达目标高度，切换 FORWARD");
     current_state_ = State::FORWARD;
 }
 
-// 状态：FORWARD - 前进1米后降落
+// 状态：FORWARD - 依次飞行5个航点后降落
 void MissionExecutor::on_forward() {
-    RCLCPP_INFO(logger_, "[FORWARD] 前进1米");
-    const auto s = state_.get_state();
-    Target forward_1m(s.x + 1.0f, s.y, 1.0f, s.yaw);
-    fc_.fly_to_target(forward_1m);
-    RCLCPP_INFO(logger_, "[FORWARD] 完成前进，切换 LAND");
-    current_state_ = State::LAND;
+    if (!waypoints_initialized_) {
+        const auto s = state_.get_state();
+        waypoints_ = {
+            Target(s.x + 0.0f, s.y + 0.0f, default_altitude_, s.yaw), // 起点
+            Target(s.x + 1.0f, s.y + 1.0f, default_altitude_, s.yaw),
+            Target(s.x + 4.0f, s.y - 2.0f, default_altitude_, s.yaw),
+            Target(s.x + 5.0f, s.y + 1.0f, default_altitude_, s.yaw),
+            Target(s.x + 6.0f, s.y + 0.0f, default_altitude_, s.yaw)  // 回到起点
+        };
+        
+        waypoints_initialized_ = true;
+        waypoint_index_ = 0;
+        RCLCPP_INFO(logger_, "[FORWARD] 初始化5个航点，起点(%.2f, %.2f, %.2f)",
+            s.x, s.y, s.z);
+    }
+
+    if (waypoint_index_ >= kWaypointCount) {
+        RCLCPP_INFO(logger_, "[FORWARD] 已完成所有航点，切换 LAND");
+        current_state_ = State::LAND;
+        return;
+    }
+
+    const auto& target = waypoints_[waypoint_index_];
+    RCLCPP_INFO(logger_, "[FORWARD] 飞行至航点 %zu/%d: (%.2f, %.2f, %.2f)",
+        waypoint_index_ + 1, kWaypointCount, target.get_x(), target.get_y(), target.get_z());
+    fc_.fly_to_target(target);
+    ++waypoint_index_;
+
+    if (waypoint_index_ >= kWaypointCount) {
+        RCLCPP_INFO(logger_, "[FORWARD] 完成第%zu个航点，切换 LAND", waypoint_index_);
+        current_state_ = State::LAND;
+    } else {
+        RCLCPP_INFO(logger_, "[FORWARD] 完成航点，继续下一个");
+        current_state_ = State::FORWARD;
+    }
 }
 
 // // 原始复杂逻辑已注释
@@ -69,7 +97,7 @@ void MissionExecutor::on_forward() {
 //     fc_.fly_by_velocity(fwd);
 // }
 
-// // 状态：LINE_FOLLOW - 已注释，测试版本不使用
+// // 状态：LINE_FOLLOW
 // void MissionExecutor::on_line_follow() {
 //     const auto v = vision_.get_vision();
 //     const auto s = state_.get_state();
@@ -99,7 +127,7 @@ void MissionExecutor::on_forward() {
 //     }
 // }
 
-// // 状态：ALIGN_SHAPE - 已注释，测试版本不使用
+// // 状态：ALIGN_SHAPE
 // void MissionExecutor::on_align_shape() {
 //     const auto v = vision_.get_vision();
 //     const auto s = state_.get_state();
@@ -124,7 +152,7 @@ void MissionExecutor::on_forward() {
 //     }
 // }
 
-// // 状态：RETURN_LINE - 已注释，测试版本不使用
+// // 状态：RETURN_LINE
 // void MissionExecutor::on_return_line() {
 //     RCLCPP_INFO(logger_, "[RETURN_LINE] 返回巡线位置");
 //     fc_.fly_to_target(shape_return_pos_);
@@ -135,7 +163,7 @@ void MissionExecutor::on_forward() {
 //     current_state_ = State::LINE_FOLLOW;
 // }
 
-// // 状态：ALIGN_LAND - 已注释，测试版本不使用
+// // 状态：ALIGN_LAND
 // void MissionExecutor::on_align_land() {
 //     const auto v = vision_.get_vision();
 //     const auto s = state_.get_state();
