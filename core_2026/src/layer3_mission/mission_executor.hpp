@@ -30,7 +30,7 @@ public:
                     IStateProvider&    state,  // 状态接口
                     IVisionProvider&   vision, // 视觉提供接口
                     rclcpp::Logger     logger, // DroneHAL日志记录器
-                    float              default_altitude = 1.5f);
+                    float              default_altitude = 1.0f);
 
     void run(); // 开始执行任务
 

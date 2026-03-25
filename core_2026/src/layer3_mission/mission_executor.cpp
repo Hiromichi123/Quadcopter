@@ -51,7 +51,7 @@ void MissionExecutor::on_forward() {
         waypoints_ = {
             Target(s.x + 0.0f, s.y + 0.0f, default_altitude_, s.yaw), // 起点
             Target(s.x + 1.0f, s.y + 1.0f, default_altitude_, s.yaw),
-            Target(s.x + 4.0f, s.y - 2.0f, default_altitude_, s.yaw),
+            Target(s.x + 3.0f, s.y - 1.0f, default_altitude_, s.yaw),
             Target(s.x + 5.0f, s.y + 1.0f, default_altitude_, s.yaw),
             Target(s.x + 6.0f, s.y + 0.0f, default_altitude_, s.yaw)  // 回到起点
         };
