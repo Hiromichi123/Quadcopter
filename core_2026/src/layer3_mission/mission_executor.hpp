@@ -14,14 +14,6 @@
 /**
  * @brief 任务执行层
  *
- * 将原 quadcopter::main_loop() 中的状态机完整提取为独立类：
- *   TAKEOFF → FORWARD → LINE_FOLLOW → ALIGN_SHAPE
- *           → RETURN_LINE → LINE_FOLLOW → ALIGN_LAND → LAND → DONE
- *
- * 改进：
- * - 枚举类替代裸 int flag，含义清晰、不可越界赋值。
- * - 每个状态对应一个私有方法，避免巨型 switch-case。
- * - 使用具名常量替代魔法数字（1000.0、20、5.0 等）。
  * - 通过接口获取状态和视觉数据，不依赖任何具体硬件类。
  */
 class MissionExecutor {

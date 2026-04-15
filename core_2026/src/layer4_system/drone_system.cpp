@@ -1,6 +1,8 @@
 #include "layer4_system/drone_system.hpp"
 #include <chrono>
 
+using namespace fly_to_target_args;
+
 DroneSystem::DroneSystem() {
     // Layer 1: HAL-ROS2节点，提供接口实现
     hal_ = std::make_shared<DroneHAL>();
@@ -86,7 +88,7 @@ void DroneSystem::pre_flight_checks() {
             last_request = hal_->now();
         } else if (ms.armed && ms.mode == "OFFBOARD") {
             RCLCPP_INFO(hal_->get_logger(), "[PreFlight] Armed + OFFBOARD 成功！");
-            fc_->fly_to_target(hold); // 起飞至 hold（阻塞）
+            fc_->fly_to_target(target = hold); // 起飞至 hold（阻塞）
             break;
         }
         

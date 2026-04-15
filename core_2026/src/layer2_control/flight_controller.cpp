@@ -17,10 +17,24 @@ FlightController::FlightController(
     , pid_cfg_(pid_cfg)
 {}
 
-// ===== 飞行运动组 =====
-# pragma region movement_methods
-// 定点移动
+// 定点移动（阻塞）非具名重载
 void FlightController::fly_to_target(
+    const Target& target,
+    float timeout_sec, float stable_time_sec, int frame_rate)
+{
+    fly_to_target_impl(target, timeout_sec, stable_time_sec, frame_rate);
+}
+
+void FlightController::fly_to_target_pid(
+    const Target& target,
+    float timeout_sec, float stable_time_sec, int frame_rate)
+{
+    fly_to_target_pid_impl(target, timeout_sec, stable_time_sec, frame_rate);
+}
+
+
+// 定点移动（阻塞）核心逻辑
+void FlightController::fly_to_target_impl(
     const Target& target,
     float timeout_sec, float stable_time_sec, int frame_rate)
 {
@@ -46,8 +60,8 @@ void FlightController::fly_to_target(
     }
 }
 
-// 定点移动（PID）
-void FlightController::fly_to_target_pid(
+// 定点移动（PID）核心逻辑
+void FlightController::fly_to_target_pid_impl(
     const Target& target,
     float timeout_sec, float stable_time_sec, int frame_rate)
 {
@@ -92,12 +106,22 @@ void FlightController::fly_to_target_pid(
 
 // 单次速度发布
 void FlightController::fly_by_velocity(const Velocity& velocity) {
+    fly_by_velocity_impl(velocity);
+}
+
+// 单次速度发布核心逻辑
+void FlightController::fly_by_velocity_impl(const Velocity& velocity) {
     Velocity cmd_vel = velocity; // 创建可修改副本（设置时间戳用）
     cmd_.publish_velocity(cmd_vel);
 }
 
 // 持续速度发布（含高度hang）
 void FlightController::fly_by_vel_duration(const Velocity& velocity, float duration) {
+    fly_by_vel_duration_impl(velocity, duration);
+}
+
+// 持续速度发布（含高度hang）核心逻辑
+void FlightController::fly_by_vel_duration_impl(const Velocity& velocity, float duration) {
     const rclcpp::Time start_time = clock_->now();
     const float start_altitude = state_.get_state().z;
     Velocity vel_cmd = velocity;
@@ -120,20 +144,28 @@ void FlightController::fly_by_vel_duration(const Velocity& velocity, float durat
 
 // 路径航点飞行
 void FlightController::fly_by_path(Path& path) {
+    fly_by_path_impl(path);
+}
+
+// 路径航点飞行核心逻辑
+void FlightController::fly_by_path_impl(Path& path) {
+    using namespace fly_to_target_args;
     Target waypoint;
     while (rclcpp::ok()) {
         if (path.get_next_waypoint(waypoint)) {
-            fly_to_target(waypoint);
+            fly_to_target(target = waypoint, timeout_sec = 10.0f, stable_time_sec = 0.5f, frame_rate = 30);
         } else {
             RCLCPP_INFO(logger_, "[fly_by_path]: 所有航点已执行完毕");
             break;
         }
     }
 }
-# pragma endregion
 
 // 运行时热更新 PID
-void FlightController::set_pid_config(PidConfig cfg) { pid_cfg_ = cfg; }
+void FlightController::set_pid_config(PidConfig cfg) { set_pid_config_impl(cfg); }
+
+// 运行时热更新 PID 核心逻辑
+void FlightController::set_pid_config_impl(PidConfig cfg) { pid_cfg_ = cfg; }
 
 // 位置检查（球径）
 bool FlightController::pos_check(const Target& target, float distance) {

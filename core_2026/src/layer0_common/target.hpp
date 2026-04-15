@@ -16,8 +16,8 @@ public:
         set_position(x, y, z);
         set_yaw(yaw);
     }
-
-    /// 从 PoseStamped 快速构造（显式，防止隐式转换）
+    
+    // 从 PoseStamped 快速显式构造（防止隐式转换）
     explicit Target(const geometry_msgs::msg::PoseStamped& pose) : pose_(pose) {}
 
     // 读取
@@ -31,8 +31,8 @@ public:
         return (yaw < 0) ? yaw + 2.0f * static_cast<float>(M_PI) : yaw;
     }
 
-    /// 返回可发布的 PoseStamped
-    geometry_msgs::msg::PoseStamped get_pose() const { return pose_; }
+    // 返回可发布的 PoseStamped
+    const geometry_msgs::msg::PoseStamped& get_pose() const { return pose_; } // 常量引用，避免拷贝
 
     // 写入
     void set_position(float x, float y, float z) {
@@ -50,7 +50,7 @@ public:
         pose_.pose.orientation.w = std::cos(yaw / 2.0f);
     }
 
-    /// 发布前更新时间戳
+    // 发布前更新时间戳
     void set_time(rclcpp::Time time) { pose_.header.stamp = time; }
 
 private:

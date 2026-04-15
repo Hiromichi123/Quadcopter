@@ -32,8 +32,9 @@ set(SOURCES
 # ── 可执行文件 ────────────────────────────────────────────────
 add_executable(quad_node ${SOURCES})
 
-# 头文件搜索路径：以 src/ 为根，使 #include "layer1_hal/..." 等路径有效
+# ── 头文件路径 ────────────────────────────────────────────────
 target_include_directories(quad_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:include>
 )
@@ -49,6 +50,7 @@ ament_target_dependencies(quad_node
   vision_py
 )
 
+# ── RPATH 设置 ────────────────────────────────────────────────
 set(CMAKE_INSTALL_RPATH /usr/local/lib)
 
 # ── 安装 ──────────────────────────────────────────────────────

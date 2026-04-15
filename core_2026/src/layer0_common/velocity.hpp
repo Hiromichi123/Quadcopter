@@ -28,8 +28,8 @@ public:
     float get_vpitch() const { return ts_.twist.angular.y; }
     float get_vroll()  const { return ts_.twist.angular.x; }
 
-    /// 返回可发布的 TwistStamped
-    geometry_msgs::msg::TwistStamped get_twist() const { return ts_; }
+    // 返回可发布的 TwistStamped
+    const geometry_msgs::msg::TwistStamped& get_twist() const { return ts_; } // 常量引用，避免拷贝
 
     // 写入
     void set_vx(float v)     { ts_.twist.linear.x  = v; }
@@ -39,7 +39,7 @@ public:
     void set_vpitch(float v) { ts_.twist.angular.y = v; }
     void set_vroll(float v)  { ts_.twist.angular.x = v; }
 
-    /// 发布前更新时间戳
+    // 发布前更新时间戳
     void set_time(rclcpp::Time time) { ts_.header.stamp = time; }
 
 protected:

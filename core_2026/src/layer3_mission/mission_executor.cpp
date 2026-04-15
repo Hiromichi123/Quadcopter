@@ -1,6 +1,8 @@
 #include "layer3_mission/mission_executor.hpp"
 #include <cmath>
 
+using namespace fly_to_target_args;
+
 MissionExecutor::MissionExecutor(
     FlightController& fc,
     IStateProvider&   state,
@@ -39,7 +41,7 @@ void MissionExecutor::run() {
 // 状态：TAKEOFF - 起飞到1米高度
 void MissionExecutor::on_takeoff() {
     RCLCPP_INFO(logger_, "[TAKEOFF] 上升至 %.2f m", default_altitude_);
-    fc_.fly_to_target(takeoff_target_);
+    fc_.fly_to_target(target = takeoff_target_);
     RCLCPP_INFO(logger_, "[TAKEOFF] 到达目标高度，切换 FORWARD");
     current_state_ = State::FORWARD;
 }
@@ -59,7 +61,7 @@ void MissionExecutor::on_forward() {
         waypoints_initialized_ = true;
         waypoint_index_ = 0;
         RCLCPP_INFO(logger_, "[FORWARD] 初始化5个航点，起点(%.2f, %.2f, %.2f)",
-            s.x, s.y, s.z);
+                s.x, s.y, s.z);
     }
 
     if (waypoint_index_ >= kWaypointCount) {
@@ -68,10 +70,10 @@ void MissionExecutor::on_forward() {
         return;
     }
 
-    const auto& target = waypoints_[waypoint_index_];
+    const auto& tgt = waypoints_[waypoint_index_];
     RCLCPP_INFO(logger_, "[FORWARD] 飞行至航点 %zu/%d: (%.2f, %.2f, %.2f)",
-        waypoint_index_ + 1, kWaypointCount, target.get_x(), target.get_y(), target.get_z());
-    fc_.fly_to_target(target);
+        waypoint_index_ + 1, kWaypointCount, tgt.get_x(), tgt.get_y(), tgt.get_z());
+    fc_.fly_to_target(target = tgt);
     ++waypoint_index_;
 
     if (waypoint_index_ >= kWaypointCount) {
@@ -83,7 +85,7 @@ void MissionExecutor::on_forward() {
     }
 }
 
-// // 原始复杂逻辑已注释
+// // 原始逻辑
 // void MissionExecutor::on_forward() {
 //     const auto v = vision_.get_vision();
 //     if (v.is_line_detected) {
