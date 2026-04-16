@@ -20,6 +20,7 @@ constexpr float DEFAULT_POS_CHECK_DISTANCE = 0.25f;
 struct PidConfig {
     PidGains xy{1.0f, 0.1f, 0.2f, 0.5f, 0.0f};  // XY 轴增益，解除速度限制
     PidGains z {1.5f, 0.2f, 0.1f, 0.3f, 0.0f};  // Z  轴增益，解除速度限制
+    PidGains yaw{1.0f, 0.3f, 0.2f, 0.5f, 0.0f}; // Yaw轴增益，解除速度限制
 };
 
 /**
@@ -45,57 +46,55 @@ public:
                      int                      rate_hz = 20,
                      PidConfig                pid_cfg = {});
 
-    // ===== 飞行动作组 ======
+    /// ===== 飞行动作组 ======
     
-    // 定点飞行
-    // 定点飞行（阻塞）非具名重载
+    /// 定点飞行
+    // 阻塞
     void fly_to_target(const Target& target,
                        float timeout_sec     = 10.0f,
                        float stable_time_sec = 0.1f,
                        int   frame_rate      = 30);
     
-    // 定点飞行（阻塞）
+    // 阻塞（具名参数）
     template<typename... Args, std::enable_if_t<(named_args::is_arg_v<Args> && ...), int> = 0>
     void fly_to_target(Args&&... args);
 
-    // 定点飞行（PID 速度闭环）非具名重载
+    // 速度 PID
     void fly_to_target_pid(const Target& target,
                            float timeout_sec     = 10.0f,
                            float stable_time_sec = 0.1f,
                            int   frame_rate      = 30);
 
-    /// 定点飞行（PID 速度闭环，具名参数版本）
+    // 速度 PID（具名参数）
     template<typename... Args, std::enable_if_t<(named_args::is_arg_v<Args> && ...), int> = 0>
     void fly_to_target_pid(Args&&... args);
 
     /// 速度飞行
-    // 速度飞行，单次发布（非具名重载）
+    // 单次发布
     void fly_by_velocity(const Velocity& velocity);
 
-    /// 速度飞行，单次发布（具名参数版本）
+    // 单次发布（具名参数）
     template<typename... Args, std::enable_if_t<(named_args::is_arg_v<Args> && ...), int> = 0>
     void fly_by_velocity(Args&&... args);
 
-    // 速度飞行，保持持续 duration 秒（含高度 P 控制）（非具名重载）
+    // 持续 duration 秒（含高度 P 控制）
     void fly_by_vel_duration(const Velocity& velocity, float duration);
 
-    /// 速度飞行，保持持续 duration 秒（含高度 P 控制）（具名参数版本）
+    // 持续 duration 秒（含高度 P 控制）（具名参数）
     template<typename... Args, std::enable_if_t<(named_args::is_arg_v<Args> && ...), int> = 0>
     void fly_by_vel_duration(Args&&... args);
 
     /// 路径航点飞行
-    // 路径航点飞行（非具名重载）
     void fly_by_path(Path& path);
 
-    /// 路径航点飞行（具名参数版本）
+    // 路径航点飞行（具名参数）
     template<typename... Args, std::enable_if_t<(named_args::is_arg_v<Args> && ...), int> = 0>
     void fly_by_path(Args&&... args);
 
-    /// 运行时更新 PID 增益
-    // 运行时更新 PID 增益（非具名重载）
+    // 运行时更新 PID 增益
     void set_pid_config(PidConfig cfg);
 
-    /// 运行时更新 PID 增益（具名参数版本）
+    // 运行时更新 PID 增益（具名参数）
     template<typename... Args, std::enable_if_t<(named_args::is_arg_v<Args> && ...), int> = 0>
     void set_pid_config(Args&&... args);
 
@@ -126,7 +125,7 @@ private:
                             float stable_time_sec,
                             int   frame_rate);
 
-    // 定点移动（PID 速度闭环）impl
+    // 定点移动（速度 PID）impl
     void fly_to_target_pid_impl(const Target& target,
                                 float timeout_sec,
                                 float stable_time_sec,
@@ -179,7 +178,7 @@ inline void FlightController::fly_to_target(Args&&... args) {
     fly_to_target_impl(target_val, timeout_sec_val, stable_time_sec_val, frame_rate_val);
 }
 
-// ── 定点移动（PID 速度闭环） ──────────────────────────────────────────────────────
+// ── 定点移动（速度 PID） ──────────────────────────────────────────────────────
 namespace fly_to_target_pid_args {
     struct TargetTag {};
     struct TimeoutSecTag {};
@@ -227,7 +226,7 @@ inline void FlightController::fly_by_velocity(Args&&... args) {
     fly_by_velocity_impl(velocity_val);
 }
 
-// ── 速度飞行，保持持续 duration 秒（含高度 P 控制） ─────────────────────────────────────────────
+// ── 速度飞行，持续 duration 秒（高度 P 控制） ─────────────────────────────────────────────
 namespace fly_by_vel_duration_args {
     struct VelocityTag {};
     struct DurationTag {};

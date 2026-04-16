@@ -26,7 +26,7 @@ public:
         // timer采集与发布
         timer = this->create_wall_timer(
             std::chrono::milliseconds(33),
-            std::bind(&D435Node::publish_images, this)
+            [this](){ publish_images(); }
         );
     }
 

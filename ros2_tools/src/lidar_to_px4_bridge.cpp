@@ -6,7 +6,14 @@ class LidarToPx4Bridge : public rclcpp::Node {
 public:
   LidarToPx4Bridge() : Node("lidar_to_px4_bridge") {
     // 订阅 PointLIO 输出
-    odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/aft_mapped_to_init", 10, std::bind(&LidarToPx4Bridge::odomCallback, this, std::placeholders::_1));
+    odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
+      "/aft_mapped_to_init", 10, 
+      [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+        LidarToPx4Bridge::odomCallback(msg);
+      });
+
+    // 订阅 Fastlio 输出
+    //odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/absolute_pose", 10, std::bind(&LidarToPx4Bridge::odomCallback, this, std::placeholders::_1));
 
     // 发布给 PX4 飞控
     vision_pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", 10);

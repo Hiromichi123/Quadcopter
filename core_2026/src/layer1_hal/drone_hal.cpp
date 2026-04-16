@@ -12,20 +12,20 @@ DroneHAL::DroneHAL() : Node("drone_hal_node") {
     // 订阅组
     lidar_sub_ = this->create_subscription<ros2_tools::msg::LidarPose>(
         "lidar_data", 10,
-        std::bind(&DroneHAL::lidar_cb, this, std::placeholders::_1));
+        [this](const ros2_tools::msg::LidarPose::SharedPtr msg){ DroneHAL::lidar_cb(msg);});
     state_sub_ = this->create_subscription<mavros_msgs::msg::State>(
         "/mavros/state", 10,
-        std::bind(&DroneHAL::state_cb, this, std::placeholders::_1));
+        [this](const mavros_msgs::msg::State::SharedPtr msg){ DroneHAL::state_cb(msg);});
     vision_sub_ = this->create_subscription<vision_py::msg::Vision>(
         "vision", 10,
-        std::bind(&DroneHAL::vision_cb, this, std::placeholders::_1));
+        [this](const vision_py::msg::Vision::SharedPtr msg){ DroneHAL::vision_cb(msg);});
 
     // 客户端
     arming_client_  = this->create_client<mavros_msgs::srv::CommandBool>("mavros/cmd/arming");
     command_client_ = this->create_client<mavros_msgs::srv::CommandLong>("mavros/cmd/command");
     set_mode_client_= this->create_client<mavros_msgs::srv::SetMode>("mavros/set_mode");
 
-    RCLCPP_INFO(this->get_logger(), "[DroneHAL] 硬件抽象层初始化完成");
+    RCLCPP_INFO(this->get_logger(), "[DroneHAL] 硬件抽象层 初始化完成");
 }
 
 // ===== 接口组 =====

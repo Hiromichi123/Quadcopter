@@ -40,13 +40,13 @@ public:
         // 订阅 PointLIO 里程计（实机模式）
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
             real_topic, 10, 
-            std::bind(&LidarDataNode::odomCallback, this, std::placeholders::_1));
+            [this](const nav_msgs::msg::Odometry::SharedPtr msg){ LidarDataNode::odomCallback(msg);});
         RCLCPP_INFO(this->get_logger(), "创建实机odom订阅: %s", real_topic.c_str());
 
         // 订阅仿真里程计（仿真模式）
         local_position_sub = this->create_subscription<nav_msgs::msg::Odometry>(
             sim_topic, 10, 
-            std::bind(&LidarDataNode::odomCallback, this, std::placeholders::_1));
+            [this](const nav_msgs::msg::Odometry::SharedPtr msg){ LidarDataNode::odomCallback(msg);});
         RCLCPP_INFO(this->get_logger(), "创建仿真odom订阅: %s", sim_topic.c_str());
     }
 
@@ -87,18 +87,16 @@ public:
 
     // 低频打印当前位姿日志
     void log(double x, double y, double z, double roll, double pitch, double yaw) {
-        static int counter = 0;
-        if (++counter >= 50) {
-            RCLCPP_INFO(
-                this->get_logger(),
-                "Position=(%.2f, %.2f, %.2f), Orientation=(%.2f, %.2f, %.2f) rad", 
-                x, y, z, roll, pitch, yaw);
-                counter = 0;
-        }
+        RCLCPP_INFO_THROTTLE(
+            this->get_logger(),
+            *this->get_clock(),
+            5000, // 5秒打印一次
+            "Position=(%.2f, %.2f, %.2f), Orientation=(%.2f, %.2f, %.2f) rad",
+            x, y, z, roll, pitch, yaw);
     }
 
 private:
-    bool using_gazebo_;
+    bool using_gazebo_; // 仿真开关
     
     rclcpp::Publisher<ros2_tools::msg::LidarPose>::SharedPtr lidar_pub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;

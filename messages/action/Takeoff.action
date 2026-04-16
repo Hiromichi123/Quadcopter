@@ -1,0 +1,25 @@
+# Goal
+string task_id
+uint8 priority
+float32 target_altitude
+float32 timeout_sec
+---
+# Result
+bool success
+uint8 final_state_code
+uint16 error_code
+string message
+float32 elapsed_sec
+---
+# Feedback
+string task_id
+uint8 priority
+builtin_interfaces/Time stamp
+uint8 state_code
+uint16 error_code
+string message
+float32 progress
+float32 distance_error
+float32 yaw_error
+geometry_msgs/Pose current_pose
+geometry_msgs/Twist current_twist

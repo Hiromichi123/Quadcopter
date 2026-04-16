@@ -33,7 +33,7 @@ void FlightController::fly_to_target_pid(
 }
 
 
-// 定点移动（阻塞）核心逻辑
+// 定点移动（阻塞）impl
 void FlightController::fly_to_target_impl(
     const Target& target,
     float timeout_sec, float stable_time_sec, int frame_rate)
@@ -50,8 +50,7 @@ void FlightController::fly_to_target_impl(
             break;
         }
         cmd_.publish_position(cmd_target);
-        if (pos_check(cmd_target)) ++stable_count;
-        else stable_count = 0;
+        (pos_check(target)) ? ++stable_count : (stable_count = 0);
         rate_->sleep();
     } while (rclcpp::ok() && stable_count < required);
 
@@ -60,7 +59,7 @@ void FlightController::fly_to_target_impl(
     }
 }
 
-// 定点移动（PID）核心逻辑
+// 定点移动（PID）impl
 void FlightController::fly_to_target_pid_impl(
     const Target& target,
     float timeout_sec, float stable_time_sec, int frame_rate)
@@ -68,8 +67,9 @@ void FlightController::fly_to_target_pid_impl(
     PidController pid_x(pid_cfg_.xy);
     PidController pid_y(pid_cfg_.xy);
     PidController pid_z(pid_cfg_.z);
+    PidController pid_yaw(pid_cfg_.yaw);
 
-    int  stable_count  = 0;
+    int stable_count  = 0;
     const int required = static_cast<int>(stable_time_sec * frame_rate);
 
     rclcpp::Time last_time  = clock_->now();
@@ -90,16 +90,14 @@ void FlightController::fly_to_target_pid_impl(
                 RCLCPP_INFO(logger_, "[fly_to_target_pid]: 到达目标点：(%.2f, %.2f, %.2f)", target.get_x(), target.get_y(), target.get_z());
                 break;
             }
-        } else {
-            stable_count = 0;
-        }
+        } else { stable_count = 0; }
 
         const DroneState s = state_.get_state();
         float vx = pid_x.update(target.get_x() - s.x, dt);
         float vy = pid_y.update(target.get_y() - s.y, dt);
         float vz = pid_z.update(target.get_z() - s.z, dt);
-
-        fly_by_velocity(Velocity(vx, vy, vz));
+        float vyaw = pid_yaw.update(target.get_yaw() - s.yaw, dt);
+        fly_by_velocity(Velocity(vx, vy, vz, vyaw));
         rate_->sleep();
     }
 }
@@ -109,7 +107,7 @@ void FlightController::fly_by_velocity(const Velocity& velocity) {
     fly_by_velocity_impl(velocity);
 }
 
-// 单次速度发布核心逻辑
+// 单次速度发布impl
 void FlightController::fly_by_velocity_impl(const Velocity& velocity) {
     Velocity cmd_vel = velocity; // 创建可修改副本（设置时间戳用）
     cmd_.publish_velocity(cmd_vel);
@@ -120,7 +118,7 @@ void FlightController::fly_by_vel_duration(const Velocity& velocity, float durat
     fly_by_vel_duration_impl(velocity, duration);
 }
 
-// 持续速度发布（含高度hang）核心逻辑
+// 持续速度发布（含高度hang）impl
 void FlightController::fly_by_vel_duration_impl(const Velocity& velocity, float duration) {
     const rclcpp::Time start_time = clock_->now();
     const float start_altitude = state_.get_state().z;
@@ -131,11 +129,9 @@ void FlightController::fly_by_vel_duration_impl(const Velocity& velocity, float 
 
         // 高度反馈控制（防止漂移）
         const float z_error = start_altitude - state_.get_state().z;
-        if (std::abs(z_error) > 0.1f) {
-            vel_cmd.set_vz(std::clamp(z_error * 1.0f, -0.1f, 0.1f));
-        } else {
-            vel_cmd.set_vz(0.0f);
-        }
+        std::abs(z_error) > 0.1f 
+            ? vel_cmd.set_vz(std::clamp(z_error * 1.0f, -0.1f, 0.1f))  // 限幅0.1
+            : vel_cmd.set_vz(0.0f);
 
         fly_by_velocity(vel_cmd);
         rate_->sleep();
@@ -164,7 +160,7 @@ void FlightController::fly_by_path_impl(Path& path) {
 // 运行时热更新 PID
 void FlightController::set_pid_config(PidConfig cfg) { set_pid_config_impl(cfg); }
 
-// 运行时热更新 PID 核心逻辑
+// 运行时热更新 PID impl
 void FlightController::set_pid_config_impl(PidConfig cfg) { pid_cfg_ = cfg; }
 
 // 位置检查（球径）
@@ -177,11 +173,10 @@ bool FlightController::pos_check(const Target& target, float distance) {
         std::pow(s.z - target.get_z(), 2));
 
     RCLCPP_INFO_THROTTLE(logger_, *clock_, 2000, "距目标: %.3f m", dist);
-    return dist < distance &&
-           std::abs(s.yaw - target.get_yaw()) < 0.1f;
+    return dist < distance && std::abs(s.yaw - target.get_yaw()) < 0.1f;
 }
 
-// 位置检查（各轴分别设置误差阈值）
+// 位置检查（严格三轴）
 bool FlightController::pos_check(
     const Target& target,
     float distance_x, float distance_y, float distance_z)

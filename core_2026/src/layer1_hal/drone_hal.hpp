@@ -49,11 +49,11 @@ public:
     [[nodiscard]] vision_py::msg::Vision get_vision() const override;
     [[nodiscard]] bool                   has_vision() const override;
 
-    // MAVRos 服务接口（供 DroneSystem 触发）
+    // MAVROS 服务接口（供 DroneSystem 触发）
     bool request_arm(bool arm = true); // 请求px4解锁（非阻塞）
     bool request_set_mode(const std::string& mode); // 请求切换px4模式"OFFBOARD"(非阻塞)
 
-    // 查询 MAVRos 状态
+    // 查询 MAVROS 状态
     [[nodiscard]] mavros_msgs::msg::State get_mavros_state() const;
 
 private:
