@@ -7,11 +7,8 @@ package_name = 'vision_py'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(include=['vision_py']),
-    data_files=[
-        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml'])
-    ],
+    # scripts/ is a Python package in this workspace and provides ROS2 entry points.
+    packages=find_packages(include=['scripts', 'scripts.*']),
 
     install_requires=[
         'setuptools',
@@ -26,11 +23,13 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'vision_node = scripts.vision_node:main'  # 确保入口路径正确
+            'vision_node = scripts.vision_node:main',
+            'dvs_raw_serial_node = scripts.dvs_raw_serial_node:main',
         ],
     },
     data_files=[
-        (os.path.join("share", package_name), ["package.xml"]), #package.xml必须要被安装到install/share/your_package/下
-        (os.path.join("share", package_name, "scripts"), glob("scripts/*.py")), # 所有scripts目录下py文件都被安装
+        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
+        (os.path.join("share", package_name), ["package.xml"]),
+        (os.path.join("share", package_name, "scripts"), glob("scripts/*.py")),
     ],
 )
