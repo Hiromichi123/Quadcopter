@@ -14,6 +14,7 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description() -> LaunchDescription:
     fcu_url = LaunchConfiguration('fcu_url')
     dvs_port = LaunchConfiguration('dvs_port')
+    real_robot_odom_topic = LaunchConfiguration('real_robot_odom_topic')
 
     processing_strategy = LaunchConfiguration('processing_strategy')
     filter_strength = LaunchConfiguration('filter_strength')
@@ -28,6 +29,7 @@ def generate_launch_description() -> LaunchDescription:
     launch_args = [
         DeclareLaunchArgument('fcu_url', default_value='serial:///dev/ttyACM0:57600'),
         DeclareLaunchArgument('dvs_port', default_value='/dev/ttyACM1'),
+        DeclareLaunchArgument('real_robot_odom_topic', default_value='/aft_mapped_to_init'),
         DeclareLaunchArgument('processing_strategy', default_value='cluster'),
         DeclareLaunchArgument('filter_strength', default_value='0.40'),
         DeclareLaunchArgument('filter_min_component_pixels', default_value='10'),
@@ -86,9 +88,15 @@ def generate_launch_description() -> LaunchDescription:
              parameters=[{
                 'use_simulation': False, # 仿真开关
                 'simulation_odom_topic': '/absolute_pose', # gazebo的里程计话题
-                'real_robot_odom_topic': '/aft_mapped_to_init' # PointLIO的里程计话题
+                'real_robot_odom_topic': real_robot_odom_topic # PointLIO的里程计话题
              }]),
-        Node(package='ros2_tools', executable='lidar_to_px4_bridge')
+        Node(
+            package='ros2_tools',
+            executable='lidar_to_px4_bridge',
+            parameters=[{
+                'real_robot_odom_topic': real_robot_odom_topic
+            }]
+        )
     ]
 
     dvs_min_node = Node(

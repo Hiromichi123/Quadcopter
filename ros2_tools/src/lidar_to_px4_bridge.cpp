@@ -5,12 +5,16 @@
 class LidarToPx4Bridge : public rclcpp::Node {
 public:
   LidarToPx4Bridge() : Node("lidar_to_px4_bridge") {
+    this->declare_parameter<std::string>("real_robot_odom_topic", "/aft_mapped_to_init");
+    const auto odom_topic = this->get_parameter("real_robot_odom_topic").as_string();
+
     // 订阅 PointLIO 输出
     odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
-      "/aft_mapped_to_init", 10, 
+      odom_topic, 10,
       [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
         LidarToPx4Bridge::odomCallback(msg);
       });
+    RCLCPP_INFO(this->get_logger(), "订阅实机odom: %s", odom_topic.c_str());
 
     // 订阅 Fastlio 输出
     //odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/absolute_pose", 10, std::bind(&LidarToPx4Bridge::odomCallback, this, std::placeholders::_1));

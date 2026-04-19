@@ -62,6 +62,14 @@ void DroneSystem::pre_flight_checks() {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
+    RCLCPP_INFO(hal_->get_logger(), "[PreFlight] 等待定位状态(lidar_data)...");
+    while (rclcpp::ok() && !hal_->has_state()) {
+        RCLCPP_WARN_THROTTLE(
+            hal_->get_logger(), *hal_->get_clock(), 2000,
+            "[PreFlight] 尚未收到 lidar_data，暂不请求 OFFBOARD。请检查 real_robot_odom_topic 与 PointLIO 输出是否一致");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
     // 预发布 setpoint（PX4 要求进入 OFFBOARD 前持续发送至少 2Hz，持续 0.5s+）
     Target hold(0.0f, 0.0f, 0.5f, 0.0f);
     rclcpp::Rate rate(20);
@@ -76,17 +84,18 @@ void DroneSystem::pre_flight_checks() {
         const bool timeout = (hal_->now() - last_request) > rclcpp::Duration::from_seconds(1.0);
 
         RCLCPP_INFO_THROTTLE(hal_->get_logger(), *hal_->get_clock(), 2000,
-            "[PreFlight] 状态: mode='%s', armed=%d, connected=%d, has_state=%d",
+            "[PreFlight] 状态: mode='%s', armed=%d, connected=%d, has_lidar_state=%d",
             ms.mode.c_str(), ms.armed, ms.connected, hal_->has_state());
 
         if (ms.mode != "OFFBOARD" && timeout) {
             bool success = hal_->request_set_mode("OFFBOARD");
             RCLCPP_INFO(hal_->get_logger(), "[PreFlight] 请求 OFFBOARD 模式... %s",
-                success ? "已发送" : "失败");
+                success ? "请求已发出(等待FCU反馈)" : "失败(服务未就绪)");
             last_request = hal_->now();
         } else if (!ms.armed && ms.mode == "OFFBOARD" && timeout) {
-            hal_->request_arm(true);
-            RCLCPP_INFO(hal_->get_logger(), "[PreFlight] arming...");
+            const bool success = hal_->request_arm(true);
+            RCLCPP_INFO(hal_->get_logger(), "[PreFlight] arming... %s",
+                success ? "请求已发出(等待FCU反馈)" : "失败(服务未就绪)");
             last_request = hal_->now();
         } else if (ms.armed && ms.mode == "OFFBOARD") {
             RCLCPP_INFO(hal_->get_logger(), "[PreFlight] Armed + OFFBOARD 成功！");
