@@ -2,6 +2,7 @@
 #include "layer0_common/target.hpp"
 #include "layer0_common/velocity.hpp"
 
+#include <chrono>
 #include <cctype>
 #include <cmath>
 
@@ -97,17 +98,63 @@ int64_t DroneHAL::get_last_dvs_detect_time_ns() const {
 
 // MAVRos 服务接口
 bool DroneHAL::request_arm(bool arm) {
-    if (!arming_client_->service_is_ready()) return false;
+    if (!arming_client_->wait_for_service(std::chrono::milliseconds(500))) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] arming 服务未就绪");
+        return false;
+    }
+
     auto req = std::make_shared<mavros_msgs::srv::CommandBool::Request>();
     req->value = arm;
-    return arming_client_->async_send_request(req).valid(); // valid()有效 = 请求成功发出
+    auto future = arming_client_->async_send_request(req);
+    if (!future.valid()) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] arming 请求发送失败");
+        return false;
+    }
+
+    if (future.wait_for(std::chrono::milliseconds(800)) != std::future_status::ready) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] arming 响应超时");
+        return false;
+    }
+
+    const auto resp = future.get();
+    if (!resp) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] arming 响应为空");
+        return false;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "[PreFlight] arming 响应: success=%d, result=%u",
+        static_cast<int>(resp->success), static_cast<unsigned int>(resp->result));
+    return resp->success;
 }
 
 bool DroneHAL::request_set_mode(const std::string& mode) {
-    if (!set_mode_client_->service_is_ready()) return false;
+    if (!set_mode_client_->wait_for_service(std::chrono::milliseconds(500))) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] set_mode 服务未就绪");
+        return false;
+    }
+
     auto req = std::make_shared<mavros_msgs::srv::SetMode::Request>();
     req->custom_mode = mode;
-    return set_mode_client_->async_send_request(req).valid();
+    auto future = set_mode_client_->async_send_request(req);
+    if (!future.valid()) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] set_mode 请求发送失败: mode=%s", mode.c_str());
+        return false;
+    }
+
+    if (future.wait_for(std::chrono::milliseconds(800)) != std::future_status::ready) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] set_mode 响应超时: mode=%s", mode.c_str());
+        return false;
+    }
+
+    const auto resp = future.get();
+    if (!resp) {
+        RCLCPP_WARN(this->get_logger(), "[PreFlight] set_mode 响应为空: mode=%s", mode.c_str());
+        return false;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "[PreFlight] set_mode 响应: mode=%s, mode_sent=%d",
+        mode.c_str(), static_cast<int>(resp->mode_sent));
+    return resp->mode_sent;
 }
 
 mavros_msgs::msg::State DroneHAL::get_mavros_state() const {
