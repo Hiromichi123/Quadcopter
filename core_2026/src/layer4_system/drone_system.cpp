@@ -20,6 +20,8 @@ DroneSystem::DroneSystem() {
         *fc_,
         *hal_,              // IStateProvider&
         *hal_,              // IVisionProvider&
+        *hal_,              // IDvsAvoidProvider&
+        *hal_,              // ICommandPublisher&
         hal_->get_logger()
     );
 

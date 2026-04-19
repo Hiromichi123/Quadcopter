@@ -14,6 +14,7 @@ class DetectionResult:
     center_x: float
     center_y: float
     radius: float
+    support_pixels: int
     approach_score: float
     strategy: str
     note: str
@@ -76,27 +77,33 @@ class BallDetector:
         self._last_energy = 0.0
         self._ema_energy = 0.0
 
-    def detect(self, events: List[Event], strategy: str) -> DetectionResult:
+    def detect(self, events: List[Event], strategy: str, approach_score_mode: str = 'rise_only') -> DetectionResult:
         if not events:
-            return DetectionResult(False, 0.0, -1.0, -1.0, 0.0, 0.0, strategy, 'no_events')
+            return DetectionResult(False, 0.0, -1.0, -1.0, 0.0, 0, 0.0, strategy, 'no_events')
 
         if strategy == 'density':
-            return self._detect_density(events)
+            return self._detect_density(events, approach_score_mode)
         if strategy == 'cluster':
-            return self._detect_cluster(events)
+            return self._detect_cluster(events, approach_score_mode)
         if strategy == 'radial':
-            return self._detect_radial(events)
+            return self._detect_radial(events, approach_score_mode)
 
-        return DetectionResult(False, 0.0, -1.0, -1.0, 0.0, 0.0, strategy, 'unknown_strategy')
+        return DetectionResult(False, 0.0, -1.0, -1.0, 0.0, 0, 0.0, strategy, 'unknown_strategy')
 
-    def _energy_and_approach(self, n_events: int) -> float:
+    def _energy_and_approach(self, n_events: int, approach_score_mode: str) -> float:
         energy = float(n_events)
         self._ema_energy = 0.8 * self._ema_energy + 0.2 * energy
-        approach_score = max(0.0, energy - self._ema_energy)
+        trend = energy - self._ema_energy
+        if approach_score_mode == 'merged':
+            # Merge rising/falling magnitude so opposite trends still contribute.
+            approach_score = abs(trend)
+        else:
+            # Legacy mode: only rising trend contributes.
+            approach_score = max(0.0, trend)
         self._last_energy = energy
         return approach_score
 
-    def _detect_density(self, events: List[Event]) -> DetectionResult:
+    def _detect_density(self, events: List[Event], approach_score_mode: str) -> DetectionResult:
         cell = 8
         gx = self.width // cell
         gy = self.height // cell
@@ -128,12 +135,12 @@ class BallDetector:
         radius = max(2.0, (peak / max(1, n)) * 25.0)
         confidence = min(1.0, peak / 55.0)
         detected = peak >= 25 and n >= 40
-        approach = self._energy_and_approach(n)
+        approach = self._energy_and_approach(n, approach_score_mode)
 
-        note = f'peak_cell=({peak_ix},{peak_iy}) peak={peak} n={n}'
-        return DetectionResult(detected, confidence, cx, cy, radius, approach, 'density', note)
+        note = f'peak_cell=({peak_ix},{peak_iy}) peak={peak} n={n} approach_mode={approach_score_mode}'
+        return DetectionResult(detected, confidence, cx, cy, radius, n, approach, 'density', note)
 
-    def _detect_cluster(self, events: List[Event]) -> DetectionResult:
+    def _detect_cluster(self, events: List[Event], approach_score_mode: str) -> DetectionResult:
         occupancy: Dict[Tuple[int, int], int] = {}
         for x, y, _, _ in events:
             xi = int(x)
@@ -167,7 +174,7 @@ class BallDetector:
 
         n = len(events)
         if not best_cluster:
-            return DetectionResult(False, 0.0, -1.0, -1.0, 0.0, self._energy_and_approach(n), 'cluster', 'no_cluster')
+            return DetectionResult(False, 0.0, -1.0, -1.0, 0.0, 0, self._energy_and_approach(n, approach_score_mode), 'cluster', f'no_cluster approach_mode={approach_score_mode}')
 
         min_x = min(pt[0] for pt in best_cluster)
         max_x = max(pt[0] for pt in best_cluster)
@@ -187,15 +194,15 @@ class BallDetector:
         shape_score = max(0.0, min(1.0, 0.6 * ratio + 0.4 * fill))
         confidence = shape_score
         detected = len(best_cluster) >= 22 and ratio >= 0.45
-        approach = self._energy_and_approach(n)
+        approach = self._energy_and_approach(n, approach_score_mode)
 
         note = (
             f'cluster_size={len(best_cluster)} box={w}x{h} '
-            f'fill={fill:.2f} ratio={ratio:.2f}'
+            f'fill={fill:.2f} ratio={ratio:.2f} approach_mode={approach_score_mode}'
         )
-        return DetectionResult(detected, confidence, cx, cy, radius, approach, 'cluster', note)
+        return DetectionResult(detected, confidence, cx, cy, radius, len(best_cluster), approach, 'cluster', note)
 
-    def _detect_radial(self, events: List[Event]) -> DetectionResult:
+    def _detect_radial(self, events: List[Event], approach_score_mode: str) -> DetectionResult:
         n = len(events)
         cx = sum(e[0] for e in events) / n
         cy = sum(e[1] for e in events) / n
@@ -209,7 +216,7 @@ class BallDetector:
 
         mean_r = sum(dists) / max(1, len(dists))
         if mean_r <= 1e-6:
-            return DetectionResult(False, 0.0, cx, cy, 0.0, self._energy_and_approach(n), 'radial', 'degenerate_radius')
+            return DetectionResult(False, 0.0, cx, cy, 0.0, 0, self._energy_and_approach(n, approach_score_mode), 'radial', f'degenerate_radius approach_mode={approach_score_mode}')
 
         var_r = sum((d - mean_r) ** 2 for d in dists) / max(1, len(dists))
         std_r = var_r ** 0.5
@@ -217,10 +224,10 @@ class BallDetector:
 
         confidence = max(0.0, min(1.0, 1.0 - cv))
         detected = n >= 40 and cv <= 0.55 and 2.0 <= mean_r <= 40.0
-        approach = self._energy_and_approach(n)
-        note = f'mean_r={mean_r:.2f} std_r={std_r:.2f} cv={cv:.2f} n={n}'
+        approach = self._energy_and_approach(n, approach_score_mode)
+        note = f'mean_r={mean_r:.2f} std_r={std_r:.2f} cv={cv:.2f} n={n} approach_mode={approach_score_mode}'
 
-        return DetectionResult(detected, confidence, cx, cy, mean_r, approach, 'radial', note)
+        return DetectionResult(detected, confidence, cx, cy, mean_r, n, approach, 'radial', note)
 
 
 def filter_small_connected_components(events: List[Event], min_component_pixels: int) -> List[Event]:

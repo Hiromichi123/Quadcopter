@@ -18,7 +18,6 @@ from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
 
 try:
-    # Works when installed as plain scripts in lib/vision_py.
     from dvs_event_processing import (
         BallDetector,
         EventFilter,
@@ -59,6 +58,8 @@ class DvsRawSerialNode(Node):
         self.declare_parameter('filter_strength', -1.0)
         self.declare_parameter('filter_min_component_pixels', 12)
         self.declare_parameter('detect_min_events', 20)
+        self.declare_parameter('detect_min_circle_pixels', 0)
+        self.declare_parameter('approach_score_mode', 'rise_only')
         self.declare_parameter('avoid_confidence_threshold', 0.45)
         self.declare_parameter('avoid_approach_threshold', 8.0)
         self.declare_parameter('visualize_enabled', False)
@@ -69,6 +70,8 @@ class DvsRawSerialNode(Node):
         self.declare_parameter('visualize_circle_thickness', 1)
         self.declare_parameter('visualize_circle_expand_px', 0)
         self.declare_parameter('visualize_confidence_threshold', 0.15)
+        self.declare_parameter('visualize_persistent_trail_enabled', False)
+        self.declare_parameter('visualize_persistent_trail_decay', 0.92)
 
         self.port = self.get_parameter('port').get_parameter_value().string_value
         self.baudrate = self.get_parameter('baudrate').get_parameter_value().integer_value
@@ -88,6 +91,8 @@ class DvsRawSerialNode(Node):
         self.filter_strength = self.get_parameter('filter_strength').get_parameter_value().double_value
         self.filter_min_component_pixels = self.get_parameter('filter_min_component_pixels').get_parameter_value().integer_value
         self.detect_min_events = self.get_parameter('detect_min_events').get_parameter_value().integer_value
+        self.detect_min_circle_pixels = self.get_parameter('detect_min_circle_pixels').get_parameter_value().integer_value
+        self.approach_score_mode = self.get_parameter('approach_score_mode').get_parameter_value().string_value
         self.avoid_confidence_threshold = self.get_parameter('avoid_confidence_threshold').get_parameter_value().double_value
         self.avoid_approach_threshold = self.get_parameter('avoid_approach_threshold').get_parameter_value().double_value
         self.visualize_enabled = self.get_parameter('visualize_enabled').get_parameter_value().bool_value
@@ -98,6 +103,8 @@ class DvsRawSerialNode(Node):
         self.visualize_circle_thickness = self.get_parameter('visualize_circle_thickness').get_parameter_value().integer_value
         self.visualize_circle_expand_px = self.get_parameter('visualize_circle_expand_px').get_parameter_value().integer_value
         self.visualize_confidence_threshold = self.get_parameter('visualize_confidence_threshold').get_parameter_value().double_value
+        self.visualize_persistent_trail_enabled = self.get_parameter('visualize_persistent_trail_enabled').get_parameter_value().bool_value
+        self.visualize_persistent_trail_decay = self.get_parameter('visualize_persistent_trail_decay').get_parameter_value().double_value
 
         self._apply_filter_strength()
 
@@ -122,6 +129,8 @@ class DvsRawSerialNode(Node):
         self._ball_detector = BallDetector(width=128, height=128)
         self._vis_ok = bool(self.visualize_enabled)
         self._last_avoid_reason = 'idle'
+        self._trail_heat = np.zeros((128, 128), dtype=np.float32)
+        self._last_trail_point = None
 
         if self._vis_ok:
             try:
@@ -151,6 +160,8 @@ class DvsRawSerialNode(Node):
             f'visualize={self._vis_ok}, compare_mode={self.visualize_compare_mode}, '
             f'filter_strength={self.filter_strength:.2f}, refractory_us={self.filter_refractory_us}, '
             f'flicker_us={self.filter_flicker_window_us}, min_events={self.detect_min_events}, '
+            f'min_circle_pixels={self.detect_min_circle_pixels}, '
+            f'approach_mode={self.approach_score_mode}, '
             f'min_component_pixels={self.filter_min_component_pixels}'
         )
 
@@ -290,6 +301,7 @@ class DvsRawSerialNode(Node):
                 center_x=-1.0,
                 center_y=-1.0,
                 radius=0.0,
+                support_pixels=0,
                 approach_score=0.0,
                 strategy=self.processing_strategy,
                 note=f'below_min_events:{len(filtered)}',
@@ -300,13 +312,23 @@ class DvsRawSerialNode(Node):
                 self._render_visualization(events, filtered, None)
             return
 
-        result = self._ball_detector.detect(filtered, self.processing_strategy)
+        result = self._ball_detector.detect(
+            filtered,
+            self.processing_strategy,
+            self.approach_score_mode,
+        )
+
+        if result.detected and int(result.support_pixels) < int(self.detect_min_circle_pixels):
+            result.detected = False
+            result.note = f'{result.note} min_circle_pixels_fail={result.support_pixels}<{self.detect_min_circle_pixels}'
+
         self._publish_detection_status(
             detected=result.detected,
             confidence=result.confidence,
             center_x=result.center_x,
             center_y=result.center_y,
             radius=result.radius,
+            support_pixels=result.support_pixels,
             approach_score=result.approach_score,
             strategy=result.strategy,
             note=result.note,
@@ -358,24 +380,49 @@ class DvsRawSerialNode(Node):
         center_x: float,
         center_y: float,
         radius: float,
+        support_pixels: int,
         approach_score: float,
         strategy: str,
         note: str,
     ) -> None:
+        detect_time_ns = int(self.get_clock().now().nanoseconds)
         msg = String()
         msg.data = (
             '{'
             f'"detected": {str(bool(detected)).lower()}, '
+            f'"detect_time_ns": {detect_time_ns}, '
             f'"confidence": {float(confidence):.3f}, '
             f'"center_x": {float(center_x):.2f}, '
             f'"center_y": {float(center_y):.2f}, '
             f'"radius": {float(radius):.2f}, '
+            f'"support_pixels": {int(support_pixels)}, '
             f'"approach_score": {float(approach_score):.2f}, '
             f'"strategy": "{strategy}", '
             f'"note": "{note}"'
             '}'
         )
         self.pub_detection.publish(msg)
+
+    def _trail_canvas(self, result) -> np.ndarray:
+        decay = max(0.0, min(1.0, float(self.visualize_persistent_trail_decay)))
+        self._trail_heat *= decay
+
+        if result is not None and result.detected:
+            cx = int(max(0, min(127, result.center_x)))
+            cy = int(max(0, min(127, result.center_y)))
+            # Keep continuity by drawing a short line from previous center.
+            if self._last_trail_point is not None:
+                px, py = self._last_trail_point
+                cv2.line(self._trail_heat, (px, py), (cx, cy), (1.0,), 2)
+            cv2.circle(self._trail_heat, (cx, cy), 2, (1.0,), -1)
+            self._last_trail_point = (cx, cy)
+
+        # Nonlinear mapping makes continuous trail visually clearer.
+        trail_u8 = np.clip(np.sqrt(np.clip(self._trail_heat, 0.0, 1.0)) * 255.0, 0, 255).astype(np.uint8)
+        canvas = np.zeros((128, 128, 3), dtype=np.uint8)
+        canvas[:, :, 1] = trail_u8
+        canvas[:, :, 2] = trail_u8
+        return canvas
 
     def _render_visualization(self, raw_events: List[Event], filtered_events: List[Event], result) -> None:
         if not self._vis_ok:
@@ -386,7 +433,7 @@ class DvsRawSerialNode(Node):
             raw_canvas = self._events_to_canvas(raw_events)
             filtered_canvas = self._events_to_canvas(filtered_events)
 
-            if result is not None and result.confidence >= float(self.visualize_confidence_threshold):
+            if result is not None and result.detected and result.confidence >= float(self.visualize_confidence_threshold):
                 # Draw only one best circle for this frame (right panel), with thicker and expanded ring.
                 cx = int(max(0, min(127, result.center_x)))
                 cy = int(max(0, min(127, result.center_y)))
@@ -402,7 +449,13 @@ class DvsRawSerialNode(Node):
                 cv2.putText(raw_enlarged, f'RAW n={len(raw_events)}', (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
                 cv2.putText(filtered_enlarged, f'FILTERED+RESULT n={len(filtered_events)}', (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
-                enlarged = np.concatenate([raw_enlarged, filtered_enlarged], axis=1)
+                if self.visualize_persistent_trail_enabled:
+                    trail_canvas = self._trail_canvas(result)
+                    trail_enlarged = cv2.resize(trail_canvas, (128 * scale, 128 * scale), interpolation=cv2.INTER_NEAREST)
+                    cv2.putText(trail_enlarged, 'TRAIL (PERSISTENT)', (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                    enlarged = np.concatenate([raw_enlarged, filtered_enlarged, trail_enlarged], axis=1)
+                else:
+                    enlarged = np.concatenate([raw_enlarged, filtered_enlarged], axis=1)
                 cv2.putText(
                     enlarged,
                     f'strategy={self.processing_strategy} avoid={self._last_avoid_reason}',
@@ -415,7 +468,16 @@ class DvsRawSerialNode(Node):
                 )
             else:
                 vis_canvas = filtered_canvas if self.visualize_use_filtered else raw_canvas
-                enlarged = cv2.resize(vis_canvas, (128 * scale, 128 * scale), interpolation=cv2.INTER_NEAREST)
+                current_enlarged = cv2.resize(vis_canvas, (128 * scale, 128 * scale), interpolation=cv2.INTER_NEAREST)
+
+                if self.visualize_persistent_trail_enabled:
+                    trail_canvas = self._trail_canvas(result)
+                    trail_enlarged = cv2.resize(trail_canvas, (128 * scale, 128 * scale), interpolation=cv2.INTER_NEAREST)
+                    cv2.putText(trail_enlarged, 'TRAIL (PERSISTENT)', (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                    enlarged = np.concatenate([current_enlarged, trail_enlarged], axis=1)
+                else:
+                    enlarged = current_enlarged
+
                 text = (
                     f'strategy={self.processing_strategy} raw={len(raw_events)} '
                     f'flt={len(filtered_events)} avoid={self._last_avoid_reason}'

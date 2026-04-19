@@ -2,13 +2,16 @@
 
 #include <mutex>
 #include <memory>
+#include <string>
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <mavros_msgs/srv/command_bool.hpp>
 #include <mavros_msgs/srv/command_long.hpp>
 #include <mavros_msgs/srv/set_mode.hpp>
 #include <mavros_msgs/msg/state.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include "ros2_tools/msg/lidar_pose.hpp"
 #include "vision_py/msg/vision.hpp"
@@ -16,6 +19,7 @@
 #include "layer1_hal/i_state_provider.hpp"
 #include "layer1_hal/i_command_publisher.hpp"
 #include "layer1_hal/i_vision_provider.hpp"
+#include "layer1_hal/i_dvs_avoid_provider.hpp"
 
 /**
  * @brief 硬件抽象层（Layer 1 · HAL Concrete）
@@ -33,6 +37,7 @@ class DroneHAL
     , public IStateProvider
     , public ICommandPublisher
     , public IVisionProvider
+    , public IDvsAvoidProvider
 {
 public:
     explicit DroneHAL();
@@ -49,6 +54,11 @@ public:
     [[nodiscard]] vision_py::msg::Vision get_vision() const override;
     [[nodiscard]] bool                   has_vision() const override;
 
+    // DVS 规避提供接口 IDvsAvoidProvider
+    [[nodiscard]] geometry_msgs::msg::Twist get_dvs_avoid_cmd() const override;
+    [[nodiscard]] bool has_recent_dvs_avoid(double max_age_sec) const override;
+    [[nodiscard]] int64_t get_last_dvs_detect_time_ns() const override;
+
     // MAVROS 服务接口（供 DroneSystem 触发）
     bool request_arm(bool arm = true); // 请求px4解锁（非阻塞）
     bool request_set_mode(const std::string& mode); // 请求切换px4模式"OFFBOARD"(非阻塞)
@@ -61,6 +71,12 @@ private:
     void lidar_cb(const ros2_tools::msg::LidarPose::SharedPtr msg);
     void state_cb(const mavros_msgs::msg::State::SharedPtr msg);
     void vision_cb(const vision_py::msg::Vision::SharedPtr msg);
+    void dvs_detection_cb(const std_msgs::msg::String::SharedPtr msg);
+    void dvs_avoid_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
+
+    static bool extract_json_int64(const std::string& json, const std::string& key, int64_t& out);
+    static bool extract_json_bool(const std::string& json, const std::string& key, bool& out);
+    void log_dvs_pipeline_latency_if_applicable(const char* command_type);
 
     // ===== 发布器组 =====
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr  pos_pub_;
@@ -70,6 +86,8 @@ private:
     rclcpp::Subscription<ros2_tools::msg::LidarPose>::SharedPtr    lidar_sub_;
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr       state_sub_;
     rclcpp::Subscription<vision_py::msg::Vision>::SharedPtr        vision_sub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr         dvs_detection_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr     dvs_avoid_sub_;
 
     // ===== 服务客户端 =====
     rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedPtr arming_client_;
@@ -85,6 +103,14 @@ private:
     mutable std::mutex     vision_mutex_;
     vision_py::msg::Vision vision_{};
     bool                   has_vision_{false};
+
+    // DVS 规避结果
+    mutable std::mutex          dvs_mutex_;
+    geometry_msgs::msg::Twist   dvs_avoid_cmd_{};
+    rclcpp::Time                dvs_avoid_rx_time_{0, 0, RCL_SYSTEM_TIME};
+    bool                        has_dvs_avoid_{false};
+    int64_t                     last_dvs_detect_time_ns_{0};
+    int64_t                     last_latency_logged_detect_ns_{0};
 
     // MAVRos状态
     mutable std::mutex      mavros_mutex_;

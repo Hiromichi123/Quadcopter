@@ -8,6 +8,8 @@
 #include "layer2_control/flight_controller.hpp"
 #include "layer1_hal/i_state_provider.hpp"
 #include "layer1_hal/i_vision_provider.hpp"
+#include "layer1_hal/i_dvs_avoid_provider.hpp"
+#include "layer1_hal/i_command_publisher.hpp"
 #include "layer0_common/target.hpp"
 #include "layer0_common/velocity.hpp"
 
@@ -21,6 +23,8 @@ public:
     MissionExecutor(FlightController&  fc,     // 飞行控制器
                     IStateProvider&    state,  // 状态接口
                     IVisionProvider&   vision, // 视觉提供接口
+                    IDvsAvoidProvider& dvs,    // DVS规避接口
+                    ICommandPublisher& cmd,    // 指令发布接口（悬停直发setpoint）
                     rclcpp::Logger     logger, // DroneHAL日志记录器
                     float              default_altitude = 1.0f);
 
@@ -46,8 +50,12 @@ private:
     static constexpr int    kAvoidTriggerTol    = 5;      // 触发容差
     static constexpr float  kAvoidOffsetX       = 0.8f;   // 规避动作X方向偏移
     static constexpr float  kAvoidCooldownSec   = 3.0f;   // 相邻规避最小间隔
-    static constexpr float  kHoverTimeoutSec    = 0.8f;   // 单次悬停维持超时
-    static constexpr float  kHoverStableSec     = 0.2f;   // 单次悬停稳定时间
+    static constexpr float  kDvsCmdFreshSec     = 0.12f;  // DVS规避指令新鲜度门限
+    static constexpr float  kDvsAvoidOffsetX    = 0.8f;   // DVS规避固定方向位移（X）
+    static constexpr float  kDvsAvoidOffsetY    = 0.0f;   // DVS规避固定方向位移（Y）
+    static constexpr float  kDvsAvoidHoldSec    = 0.5f;   // DVS规避后停留时间
+    static constexpr float  kDvsMoveTimeoutSec  = 4.0f;   // DVS位移动作超时
+    static constexpr float  kDvsMoveStableSec   = 0.1f;   // DVS位移动作稳定时间
     static constexpr float  kLandVz           = -0.20f;   // 降落速度
     static constexpr float  kLandDuration     = 5.0f;     // 降落持续秒
 
@@ -55,6 +63,8 @@ private:
     FlightController& fc_;
     IStateProvider&   state_;
     IVisionProvider&  vision_;
+    IDvsAvoidProvider& dvs_;
+    ICommandPublisher& cmd_;
     rclcpp::Logger    logger_;
 
     float default_altitude_;
