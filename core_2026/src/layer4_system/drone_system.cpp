@@ -90,12 +90,12 @@ void DroneSystem::pre_flight_checks() {
         if (ms.mode != "OFFBOARD" && timeout) {
             bool success = hal_->request_set_mode("OFFBOARD");
             RCLCPP_INFO(hal_->get_logger(), "[PreFlight] 请求 OFFBOARD 模式... %s",
-                success ? "请求已发出(等待FCU反馈)" : "失败(服务未就绪)");
+                success ? "FCU已接受" : "FCU未接受/调用失败");
             last_request = hal_->now();
         } else if (!ms.armed && ms.mode == "OFFBOARD" && timeout) {
             const bool success = hal_->request_arm(true);
             RCLCPP_INFO(hal_->get_logger(), "[PreFlight] arming... %s",
-                success ? "请求已发出(等待FCU反馈)" : "失败(服务未就绪)");
+                success ? "FCU已接受" : "FCU未接受/调用失败");
             last_request = hal_->now();
         } else if (ms.armed && ms.mode == "OFFBOARD") {
             RCLCPP_INFO(hal_->get_logger(), "[PreFlight] Armed + OFFBOARD 成功！");
