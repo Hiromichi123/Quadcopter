@@ -14,7 +14,7 @@
 #include <std_msgs/msg/string.hpp>
 
 #include "ros2_tools/msg/lidar_pose.hpp"
-#include "vision_py/msg/vision.hpp"
+#include "messages/msg/vision.hpp"
 
 #include "layer1_hal/i_state_provider.hpp"
 #include "layer1_hal/i_command_publisher.hpp"
@@ -51,7 +51,7 @@ public:
     void publish_velocity(Velocity& velocity) override;
 
     // 视觉结果提供接口 IVisionProvider
-    [[nodiscard]] vision_py::msg::Vision get_vision() const override;
+    [[nodiscard]] messages::msg::Vision get_vision() const override;
     [[nodiscard]] bool                   has_vision() const override;
 
     // DVS 规避提供接口 IDvsAvoidProvider
@@ -70,7 +70,7 @@ private:
     // ===== 回调组 =====
     void lidar_cb(const ros2_tools::msg::LidarPose::SharedPtr msg);
     void state_cb(const mavros_msgs::msg::State::SharedPtr msg);
-    void vision_cb(const vision_py::msg::Vision::SharedPtr msg);
+    void vision_cb(const messages::msg::Vision::SharedPtr msg);
     void dvs_detection_cb(const std_msgs::msg::String::SharedPtr msg);
     void dvs_avoid_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
 
@@ -85,7 +85,7 @@ private:
     // ===== 订阅器 =====
     rclcpp::Subscription<ros2_tools::msg::LidarPose>::SharedPtr    lidar_sub_;
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr       state_sub_;
-    rclcpp::Subscription<vision_py::msg::Vision>::SharedPtr        vision_sub_;
+    rclcpp::Subscription<messages::msg::Vision>::SharedPtr        vision_sub_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr         dvs_detection_sub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr     dvs_avoid_sub_;
 
@@ -101,7 +101,7 @@ private:
 
     // vision结果
     mutable std::mutex     vision_mutex_;
-    vision_py::msg::Vision vision_{};
+    messages::msg::Vision vision_{};
     bool                   has_vision_{false};
 
     // DVS 规避结果

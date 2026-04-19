@@ -11,9 +11,6 @@ find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(std_msgs REQUIRED)
 
-rosidl_generate_interfaces(${PROJECT_NAME} "msg/Vision.msg" DEPENDENCIES std_msgs)
-ament_export_dependencies(rosidl_default_runtime)
-
 install(DIRECTORY msg DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY scripts/ DESTINATION lib/${PROJECT_NAME} USE_SOURCE_PERMISSIONS )
 install(FILES package.xml DESTINATION share/${PROJECT_NAME})

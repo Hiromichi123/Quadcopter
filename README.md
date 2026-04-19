@@ -469,8 +469,8 @@ Email: 2271612727@qq.com
 ## 🙏 致谢
 
 - ROS2社区
-- ros2-rust项目
-- MAVROS团队
+- ros2-rustk项目
+- PX4、MAVROS团队
 - 所有贡献者
 
 ## 📮 联系方式

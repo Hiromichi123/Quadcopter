@@ -1,7 +1,14 @@
-from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+import os
+import launch
+from launch import LaunchDescription
+from launch.actions import TimerAction, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+from launch.substitutions import PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -44,26 +51,49 @@ def generate_launch_description() -> LaunchDescription:
         }],
     )
 
-    lidar_data_node = Node(
-        package='ros2_tools',
-        executable='lidar_data_node',
-        output='screen',
-        parameters=[{
-            'use_simulation': False,
-            'simulation_odom_topic': '/absolute_pose',
-            'real_robot_odom_topic': '/aft_mapped_to_init',
-        }],
+    livox_ros_driver = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory('livox_ros_driver2'), 'launch_ROS2', 'msg_MID360_launch.py')
+        ])
     )
 
-    lidar_bridge_node = Node(
-        package='ros2_tools',
-        executable='lidar_to_px4_bridge',
-        output='screen',
+    tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="base_to_livox_tf",
+        arguments=["0", "0", "0", "0", "0", "0", "1", "base_link", "livox_frame"]
     )
+
+    slam = TimerAction(
+        period=5.0,  # 延迟 10s 启动 PointLIO
+        actions=[
+                IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([
+                    PathJoinSubstitution([
+                        FindPackageShare("point_lio"),
+                        "launch",
+                        "point_lio.launch.py"
+                    ])
+                ]),
+                launch_arguments={"rviz": "False"}.items(),
+            )
+        ]
+    )
+    
+    ros2_tools_nodes = [
+        Node(package='ros2_tools', 
+             executable='lidar_data_node',
+             parameters=[{
+                'use_simulation': False, # 仿真开关
+                'simulation_odom_topic': '/absolute_pose', # gazebo的里程计话题
+                'real_robot_odom_topic': '/aft_mapped_to_init' # PointLIO的里程计话题
+             }]),
+        Node(package='ros2_tools', executable='lidar_to_px4_bridge')
+    ]
 
     dvs_min_node = Node(
         package='vision_py',
-        executable='dvs_minimal_record_node.py',
+        executable='dvs_minimal_record_node',
         output='screen',
         parameters=[{
             'port': dvs_port,
@@ -87,8 +117,10 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         launch_args + [
             mavros_node,
-            lidar_data_node,
-            lidar_bridge_node,
+            livox_ros_driver,
+            tf,
+            slam,
+            *ros2_tools_nodes,
             dvs_min_node,
             core_node,
         ]

@@ -17,7 +17,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(mavros_msgs REQUIRED)
 find_package(ros2_tools REQUIRED)
-find_package(vision_py REQUIRED)
+find_package(messages REQUIRED)
 
 # ── 源文件 ────────────────────────────────────────────────────
 set(SOURCES
@@ -47,7 +47,7 @@ ament_target_dependencies(quad_node
   std_msgs
   mavros_msgs
   ros2_tools
-  vision_py
+  messages
 )
 
 # ── RPATH 设置 ────────────────────────────────────────────────

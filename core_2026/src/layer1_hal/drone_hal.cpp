@@ -19,9 +19,9 @@ DroneHAL::DroneHAL() : Node("drone_hal_node") {
     state_sub_ = this->create_subscription<mavros_msgs::msg::State>(
         "/mavros/state", 10,
         [this](const mavros_msgs::msg::State::SharedPtr msg){ DroneHAL::state_cb(msg);});
-    vision_sub_ = this->create_subscription<vision_py::msg::Vision>(
+    vision_sub_ = this->create_subscription<messages::msg::Vision>(
         "vision", 10,
-        [this](const vision_py::msg::Vision::SharedPtr msg){ DroneHAL::vision_cb(msg);});
+        [this](const messages::msg::Vision::SharedPtr msg){ DroneHAL::vision_cb(msg);});
 
     const auto dvs_qos = rclcpp::QoS(rclcpp::KeepLast(10)).best_effort().durability_volatile();
     dvs_detection_sub_ = this->create_subscription<std_msgs::msg::String>(
@@ -65,7 +65,7 @@ void DroneHAL::publish_velocity(Velocity& velocity) {
 }
 
 // 视觉结果提供接口 IVisionProvider
-vision_py::msg::Vision DroneHAL::get_vision() const {
+messages::msg::Vision DroneHAL::get_vision() const {
     std::lock_guard<std::mutex> lock(vision_mutex_);
     return vision_;
 }
@@ -130,7 +130,7 @@ void DroneHAL::state_cb(const mavros_msgs::msg::State::SharedPtr msg) {
     mavros_state_ = *msg;
 }
 
-void DroneHAL::vision_cb(const vision_py::msg::Vision::SharedPtr msg) {
+void DroneHAL::vision_cb(const messages::msg::Vision::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(vision_mutex_);
     vision_    = *msg;
     has_vision_= true;
