@@ -1,5 +1,7 @@
 # Quadcopter - ROS2四旋翼飞行控制系统
 
+🌐 Language / 语言: **简体中文** | [English](README.en.md)
+
 [![ROS2](https://img.shields.io/badge/ROS2-Humble-blue.svg)](https://docs.ros.org/en/humble/)
 [![License](https://img.shields.io/badge/license-TODO-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
