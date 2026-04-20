@@ -45,6 +45,9 @@ void MissionExecutor::on_takeoff() {
     hover_target_ = Target(s.x, s.y, default_altitude_, s.yaw);
     hover_start_time_ = steady_clock_.now();
     last_avoid_time_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
+    hover_stable_since_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
+    dvs_block_until_ = steady_clock_.now() + rclcpp::Duration::from_seconds(kHoverStableEnableSec);
+    dvs_accept_enabled_ = false;
     hover_initialized_ = true;
     RCLCPP_INFO(logger_, "[TAKEOFF] 到达目标高度，切换 HOVER");
     current_state_ = State::HOVER;
@@ -56,6 +59,9 @@ void MissionExecutor::on_hover() {
         const auto s = state_.get_state();
         hover_target_ = Target(s.x, s.y, default_altitude_, s.yaw);
         hover_start_time_ = steady_clock_.now();
+        hover_stable_since_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
+        dvs_block_until_ = steady_clock_.now() + rclcpp::Duration::from_seconds(kHoverStableEnableSec);
+        dvs_accept_enabled_ = false;
         hover_initialized_ = true;
     }
 
@@ -64,6 +70,16 @@ void MissionExecutor::on_hover() {
     if (elapsed >= kMissionDurationSec) {
         RCLCPP_INFO(logger_, "[HOVER] 已悬停 %.1f s，切换 LAND", elapsed);
         current_state_ = State::LAND;
+        return;
+    }
+
+    update_dvs_accept_gate(now);
+    if (!dvs_accept_enabled_) {
+        RCLCPP_INFO_THROTTLE(
+            logger_, steady_clock_, 1000,
+            "[HOVER] 悬停稳定判定中，DVS暂不接收，剩余 %.1f s",
+            kMissionDurationSec - static_cast<float>(elapsed));
+        cmd_.publish_position(hover_target_);
         return;
     }
 
@@ -85,13 +101,26 @@ void MissionExecutor::on_hover() {
             }
 
             last_avoid_time_ = now;
+            dvs_accept_enabled_ = false;
             const auto s = state_.get_state();
             Target origin_target(s.x, s.y, default_altitude_, s.yaw);
             const float side_sign = (cmd.linear.y >= 0.0) ? 1.0f : -1.0f;
+
+            float avoid_dx = kDvsAvoidBackX;
+            float avoid_dy = kDvsAvoidSideY * side_sign;
+            float avoid_dz = kDvsAvoidUpZ;
+            const float l1 = std::fabs(avoid_dx) + std::fabs(avoid_dy) + std::fabs(avoid_dz);
+            if (l1 > kDvsAvoidL1Max) {
+                const float scale = kDvsAvoidL1Max / l1;
+                avoid_dx *= scale;
+                avoid_dy *= scale;
+                avoid_dz *= scale;
+            }
+
             Target avoid_target(
-                s.x + kDvsAvoidBackX,
-                s.y + (kDvsAvoidSideY * side_sign),
-                default_altitude_ + kDvsAvoidUpZ,
+                s.x + avoid_dx,
+                s.y + avoid_dy,
+                default_altitude_ + avoid_dz,
                 s.yaw);
 
             RCLCPP_WARN_THROTTLE(
@@ -99,9 +128,9 @@ void MissionExecutor::on_hover() {
                 steady_clock_,
                 500,
                 "[HOVER] DVS触发规避: 后退上抬侧移 (dx=%.2f, dy=%.2f, dz=%.2f), 停留 %.2f s 后返回",
-                kDvsAvoidBackX,
-                kDvsAvoidSideY * side_sign,
-                kDvsAvoidUpZ,
+                avoid_dx,
+                avoid_dy,
+                avoid_dz,
                 kDvsAvoidHoldSec);
 
             fc_.fly_to_target_pid(
@@ -123,6 +152,11 @@ void MissionExecutor::on_hover() {
                 kDvsMoveTimeoutSec,
                 kDvsMoveStableSec,
                 30);
+
+            // 回到悬停点后再解锁 DVS，期间认为 DVS 输入无效。
+            hover_stable_since_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
+            dvs_block_until_ = steady_clock_.now() + rclcpp::Duration::from_seconds(kDvsRearmDelaySec);
+            dvs_accept_enabled_ = false;
             return;
         }
     }
@@ -132,6 +166,34 @@ void MissionExecutor::on_hover() {
         "[HOVER] 悬停中，剩余 %.1f s",
         kMissionDurationSec - static_cast<float>(elapsed));
     cmd_.publish_position(hover_target_);
+}
+
+bool MissionExecutor::is_near_hover_target(const DroneState& s) const {
+    const float dx = std::fabs(s.x - hover_target_.get_x());
+    const float dy = std::fabs(s.y - hover_target_.get_y());
+    const float dz = std::fabs(s.z - hover_target_.get_z());
+    return dx <= kHoverStablePosTolXY && dy <= kHoverStablePosTolXY && dz <= kHoverStablePosTolZ;
+}
+
+void MissionExecutor::update_dvs_accept_gate(const rclcpp::Time& now) {
+    const auto s = state_.get_state();
+    if (!is_near_hover_target(s)) {
+        hover_stable_since_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
+        dvs_accept_enabled_ = false;
+        return;
+    }
+
+    if (hover_stable_since_.nanoseconds() == 0) {
+        hover_stable_since_ = now;
+        dvs_accept_enabled_ = false;
+        return;
+    }
+
+    const bool stable_enough = (now - hover_stable_since_).seconds() >= kHoverStableEnableSec;
+    const bool still_blocked =
+        (dvs_block_until_.nanoseconds() != 0) && ((dvs_block_until_ - now).seconds() > 0.0);
+
+    dvs_accept_enabled_ = stable_enough && !still_blocked;
 }
 
 // 状态：LAND

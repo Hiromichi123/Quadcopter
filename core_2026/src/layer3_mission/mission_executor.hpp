@@ -43,17 +43,24 @@ private:
     void on_takeoff();
     void on_hover();
     void on_land();
+    bool is_near_hover_target(const DroneState& s) const;
+    void update_dvs_accept_gate(const rclcpp::Time& now);
 
     // ===== 具名常量组 =====
     static constexpr float  kMissionDurationSec = 20.0f;  // 悬停阶段总时长
     static constexpr float  kDvsAvoidCooldownSec = 0.8f;  // DVS相邻规避最小间隔
     static constexpr float  kDvsCmdFreshSec     = 0.12f;  // DVS规避指令新鲜度门限
-    static constexpr float  kDvsAvoidBackX      = -0.8f;  // DVS规避后退位移（X）
-    static constexpr float  kDvsAvoidSideY      = 0.6f;   // DVS规避侧向位移幅值（Y，按指令左右决定符号）
-    static constexpr float  kDvsAvoidUpZ        = 0.25f;  // DVS规避上抬位移（Z）
+    static constexpr float  kDvsAvoidBackX      = -0.45f; // DVS规避后退位移（X）
+    static constexpr float  kDvsAvoidSideY      = 0.35f;  // DVS规避侧向位移幅值（Y，按指令左右决定符号）
+    static constexpr float  kDvsAvoidUpZ        = 0.20f;  // DVS规避上抬位移（Z）
+    static constexpr float  kDvsAvoidL1Max      = 1.0f;   // DVS规避位移三轴累计上限 |dx|+|dy|+|dz|
     static constexpr float  kDvsAvoidHoldSec    = 0.5f;   // DVS规避后停留时间
     static constexpr float  kDvsMoveTimeoutSec  = 4.0f;   // DVS位移动作超时
     static constexpr float  kDvsMoveStableSec   = 0.05f;  // DVS位移动作稳定时间
+    static constexpr float  kHoverStablePosTolXY = 0.12f; // 悬停稳定判定 XY 误差门限
+    static constexpr float  kHoverStablePosTolZ  = 0.10f; // 悬停稳定判定 Z 误差门限
+    static constexpr float  kHoverStableEnableSec = 1.0f; // 连续稳定悬停多久后才接收 DVS
+    static constexpr float  kDvsRearmDelaySec    = 0.6f; // 规避回位后 DVS 解锁额外延时
     static constexpr float  kLandVz           = -0.20f;   // 降落速度
     static constexpr float  kLandDuration     = 5.0f;     // 降落持续秒
 
@@ -74,5 +81,8 @@ private:
     rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
     rclcpp::Time  hover_start_time_{0, 0, RCL_STEADY_TIME};
     rclcpp::Time  last_avoid_time_{0, 0, RCL_STEADY_TIME};
+    rclcpp::Time  hover_stable_since_{0, 0, RCL_STEADY_TIME};
+    rclcpp::Time  dvs_block_until_{0, 0, RCL_STEADY_TIME};
     bool          hover_initialized_{false};
+    bool          dvs_accept_enabled_{false};
 };
