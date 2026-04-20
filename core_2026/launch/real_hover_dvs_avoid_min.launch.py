@@ -29,7 +29,7 @@ def generate_launch_description() -> LaunchDescription:
     launch_args = [
         DeclareLaunchArgument('fcu_url', default_value='serial:///dev/ttyACM0:57600'),
         DeclareLaunchArgument('dvs_port', default_value='/dev/ttyACM1'),
-        DeclareLaunchArgument('real_robot_odom_topic', default_value='/aft_mapped_to_init'),
+        DeclareLaunchArgument('real_robot_odom_topic', default_value='/Odometry'),
         DeclareLaunchArgument('processing_strategy', default_value='cluster'),
         DeclareLaunchArgument('filter_strength', default_value='0.40'),
         DeclareLaunchArgument('filter_min_component_pixels', default_value='10'),
