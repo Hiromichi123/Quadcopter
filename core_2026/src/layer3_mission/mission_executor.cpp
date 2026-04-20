@@ -74,13 +74,23 @@ void MissionExecutor::on_hover() {
     }
 
     update_dvs_accept_gate(now);
-    if (!dvs_accept_enabled_) {
+    const bool dvs_still_blocked =
+        (dvs_block_until_.nanoseconds() != 0) && ((dvs_block_until_ - now).seconds() > 0.0);
+
+    // 仅在规避后的阻塞窗口内屏蔽 DVS；稳定判定阶段允许继续接收。
+    if (dvs_still_blocked) {
         RCLCPP_INFO_THROTTLE(
             logger_, steady_clock_, 1000,
-            "[HOVER] 悬停稳定判定中，DVS暂不接收，剩余 %.1f s",
+            "[HOVER] 规避阻塞窗口内，DVS暂不接收，剩余 %.1f s",
             kMissionDurationSec - static_cast<float>(elapsed));
         cmd_.publish_position(hover_target_);
         return;
+    }
+
+    if (!dvs_accept_enabled_) {
+        RCLCPP_INFO_THROTTLE(
+            logger_, steady_clock_, 2000,
+            "[HOVER] 悬停稳定判定中，DVS接收已放行");
     }
 
     // 纯 DVS 被动触发规避（后退 + 左/右 + 上抬）
