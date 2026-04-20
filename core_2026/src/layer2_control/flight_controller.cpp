@@ -2,6 +2,12 @@
 #include <algorithm>
 #include <cmath>
 
+namespace {
+float shortest_angular_error(float target_yaw, float current_yaw) {
+    return std::remainder(target_yaw - current_yaw, 2.0f * static_cast<float>(M_PI));
+}
+} // namespace
+
 FlightController::FlightController(
     IStateProvider&          state,
     ICommandPublisher&        cmd,
@@ -96,7 +102,7 @@ void FlightController::fly_to_target_pid_impl(
         float vx = pid_x.update(target.get_x() - s.x, dt);
         float vy = pid_y.update(target.get_y() - s.y, dt);
         float vz = pid_z.update(target.get_z() - s.z, dt);
-        float vyaw = pid_yaw.update(target.get_yaw() - s.yaw, dt);
+        float vyaw = pid_yaw.update(shortest_angular_error(target.get_yaw(), s.yaw), dt);
         fly_by_velocity(Velocity(vx, vy, vz, vyaw));
         rate_->sleep();
     }
@@ -172,8 +178,9 @@ bool FlightController::pos_check(const Target& target, float distance) {
         std::pow(s.y - target.get_y(), 2) +
         std::pow(s.z - target.get_z(), 2));
 
+    const float yaw_error = std::fabs(shortest_angular_error(target.get_yaw(), s.yaw));
     RCLCPP_INFO_THROTTLE(logger_, *clock_, 2000, "距目标: %.3f m", dist);
-    return dist < distance && std::abs(s.yaw - target.get_yaw()) < 0.1f;
+    return dist < distance && yaw_error < 0.1f;
 }
 
 // 位置检查（严格三轴）
@@ -182,8 +189,9 @@ bool FlightController::pos_check(
     float distance_x, float distance_y, float distance_z)
 {
     const DroneState s = state_.get_state();
+    const float yaw_error = std::fabs(shortest_angular_error(target.get_yaw(), s.yaw));
     return std::abs(s.x - target.get_x()) < distance_x &&
            std::abs(s.y - target.get_y()) < distance_y &&
            std::abs(s.z - target.get_z()) < distance_z &&
-           std::abs(s.yaw - target.get_yaw()) < 0.1f;
+           yaw_error < 0.1f;
 }

@@ -20,7 +20,7 @@ constexpr float DEFAULT_POS_CHECK_DISTANCE = 0.25f;
 struct PidConfig {
     PidGains xy{1.0f, 0.1f, 0.2f, 0.5f, 0.0f};  // XY 轴增益，解除速度限制
     PidGains z {1.5f, 0.2f, 0.1f, 0.3f, 0.0f};  // Z  轴增益，解除速度限制
-    PidGains yaw{1.0f, 0.3f, 0.2f, 0.5f, 0.0f}; // Yaw轴增益，解除速度限制
+    PidGains yaw{1.0f, 0.3f, 0.2f, 0.5f, 0.6f}; // Yaw轴增益，限制角速度避免触发瞬间自转
 };
 
 /**

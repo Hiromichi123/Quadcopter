@@ -68,6 +68,7 @@ class DvsMinimalRecordNode(Node):
         self.declare_parameter('video_fps', 60.0)
         self.declare_parameter('video_scale', 6)
         self.declare_parameter('video_codec', 'MJPG')
+        self.declare_parameter('video_realtime_pacing', True)
         self.declare_parameter('draw_confidence_threshold', 0.15)
         self.declare_parameter('draw_circle_thickness', 2)
         self.declare_parameter('draw_circle_expand_px', 0)
@@ -98,6 +99,7 @@ class DvsMinimalRecordNode(Node):
         self.video_fps = self.get_parameter('video_fps').get_parameter_value().double_value
         self.video_scale = self.get_parameter('video_scale').get_parameter_value().integer_value
         self.video_codec = self.get_parameter('video_codec').get_parameter_value().string_value
+        self.video_realtime_pacing = self.get_parameter('video_realtime_pacing').get_parameter_value().bool_value
         self.draw_confidence_threshold = self.get_parameter('draw_confidence_threshold').get_parameter_value().double_value
         self.draw_circle_thickness = self.get_parameter('draw_circle_thickness').get_parameter_value().integer_value
         self.draw_circle_expand_px = self.get_parameter('draw_circle_expand_px').get_parameter_value().integer_value
@@ -126,6 +128,8 @@ class DvsMinimalRecordNode(Node):
         self._writer_raw = None
         self._writer_detect = None
         self._writer_traj = None
+        self._video_frame_period_ns = 0
+        self._next_video_frame_ns = 0
         self._metrics_file = None
         self._metrics_writer = None
         self._trajectory_points: Deque[Tuple[int, int]] = deque(maxlen=max(10, int(self.trajectory_max_points)))
@@ -193,6 +197,8 @@ class DvsMinimalRecordNode(Node):
         fourcc = cv2.VideoWriter.fourcc(*self.video_codec)
         side = 128 * max(1, int(self.video_scale))
         video_fps = float(max(1.0, self.video_fps))
+        self._video_frame_period_ns = int(1e9 / video_fps)
+        self._next_video_frame_ns = 0
 
         self._writer_raw = cv2.VideoWriter(
             raw_path,
@@ -236,7 +242,8 @@ class DvsMinimalRecordNode(Node):
             self._writer_traj = None
         else:
             self.get_logger().info(
-                f'Video outputs: raw={raw_path}, detect={detect_path}, trajectory={trajectory_path}, fps={video_fps:.1f}'
+                f'Video outputs: raw={raw_path}, detect={detect_path}, trajectory={trajectory_path}, '
+                f'fps={video_fps:.1f}, realtime_pacing={self.video_realtime_pacing}'
             )
 
         try:
@@ -538,9 +545,38 @@ class DvsMinimalRecordNode(Node):
         raw_frame = cv2.resize(raw_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
         detect_frame = cv2.resize(detect_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
         trajectory_frame = cv2.resize(trajectory_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
-        self._writer_raw.write(raw_frame)
-        self._writer_detect.write(detect_frame)
-        self._writer_traj.write(trajectory_frame)
+
+        self._write_video_triplet(raw_frame, detect_frame, trajectory_frame)
+
+    def _write_video_triplet(self, raw_frame: np.ndarray, detect_frame: np.ndarray, trajectory_frame: np.ndarray) -> None:
+        if self._writer_raw is None or self._writer_detect is None or self._writer_traj is None:
+            return
+
+        if not self.video_realtime_pacing or self._video_frame_period_ns <= 0:
+            self._writer_raw.write(raw_frame)
+            self._writer_detect.write(detect_frame)
+            self._writer_traj.write(trajectory_frame)
+            return
+
+        now_ns = time.monotonic_ns()
+        if self._next_video_frame_ns <= 0:
+            self._next_video_frame_ns = now_ns
+
+        frames_to_write = 0
+        while self._next_video_frame_ns <= now_ns:
+            frames_to_write += 1
+            self._next_video_frame_ns += self._video_frame_period_ns
+
+        # 限制单轮补帧数量，避免系统卡顿后一次性写入过多帧。
+        frames_to_write = min(frames_to_write, 5)
+
+        if frames_to_write <= 0:
+            return
+
+        for _ in range(frames_to_write):
+            self._writer_raw.write(raw_frame)
+            self._writer_detect.write(detect_frame)
+            self._writer_traj.write(trajectory_frame)
 
     def _log_processing_metrics(
         self,
