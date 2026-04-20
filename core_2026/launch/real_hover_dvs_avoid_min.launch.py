@@ -31,7 +31,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('dvs_port', default_value='/dev/ttyACM0'),
         DeclareLaunchArgument('real_robot_odom_topic', default_value='/Odometry'),
         DeclareLaunchArgument('processing_strategy', default_value='cluster'),
-        DeclareLaunchArgument('filter_strength', default_value='0.40'),
+        DeclareLaunchArgument('filter_strength', default_value='0.60'),
         DeclareLaunchArgument('filter_min_component_pixels', default_value='10'),
         DeclareLaunchArgument('approach_score_mode', default_value='merged'),
         DeclareLaunchArgument('detect_min_circle_pixels', default_value='200'),
