@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+import csv
 import os
 import threading
 import time
-from typing import List, Tuple
+from collections import deque
+from typing import Deque, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -63,12 +65,14 @@ class DvsMinimalRecordNode(Node):
 
         # Recording
         self.declare_parameter('video_output_path', '~/dvs_filtered_result.avi')
-        self.declare_parameter('video_fps', 30.0)
+        self.declare_parameter('video_fps', 60.0)
         self.declare_parameter('video_scale', 6)
         self.declare_parameter('video_codec', 'MJPG')
         self.declare_parameter('draw_confidence_threshold', 0.15)
         self.declare_parameter('draw_circle_thickness', 2)
         self.declare_parameter('draw_circle_expand_px', 0)
+        self.declare_parameter('processing_metrics_output_path', '')
+        self.declare_parameter('trajectory_max_points', 300)
 
         self.port = self.get_parameter('port').get_parameter_value().string_value
         self.baudrate = self.get_parameter('baudrate').get_parameter_value().integer_value
@@ -97,6 +101,8 @@ class DvsMinimalRecordNode(Node):
         self.draw_confidence_threshold = self.get_parameter('draw_confidence_threshold').get_parameter_value().double_value
         self.draw_circle_thickness = self.get_parameter('draw_circle_thickness').get_parameter_value().integer_value
         self.draw_circle_expand_px = self.get_parameter('draw_circle_expand_px').get_parameter_value().integer_value
+        self.processing_metrics_output_path = self.get_parameter('processing_metrics_output_path').get_parameter_value().string_value
+        self.trajectory_max_points = self.get_parameter('trajectory_max_points').get_parameter_value().integer_value
 
         self._apply_filter_strength()
 
@@ -117,8 +123,13 @@ class DvsMinimalRecordNode(Node):
         )
         self._ball_detector = BallDetector(width=128, height=128)
 
-        self._writer = None
-        self._init_video_writer()
+        self._writer_raw = None
+        self._writer_detect = None
+        self._writer_traj = None
+        self._metrics_file = None
+        self._metrics_writer = None
+        self._trajectory_points: Deque[Tuple[int, int]] = deque(maxlen=max(10, int(self.trajectory_max_points)))
+        self._init_outputs()
 
         self._lock = threading.Lock()
         self._events: List[Event] = []
@@ -139,7 +150,7 @@ class DvsMinimalRecordNode(Node):
             f'strategy={self.processing_strategy} filter_strength={self.filter_strength:.2f} '
             f'min_component_pixels={self.filter_min_component_pixels} '
             f'min_circle_pixels={self.detect_min_circle_pixels} '
-            f'video={self.video_output_path}'
+            f'video_detect={self.video_output_path}'
         )
 
     def _apply_filter_strength(self) -> None:
@@ -156,25 +167,100 @@ class DvsMinimalRecordNode(Node):
         self.avoid_confidence_threshold = 0.25 + s * 0.65
         self.avoid_approach_threshold = 2.0 + s2 * 80.0
 
-    def _init_video_writer(self) -> None:
+    def _init_outputs(self) -> None:
         self.video_output_path = os.path.abspath(os.path.expanduser(self.video_output_path))
-        video_dir = os.path.dirname(self.video_output_path)
+        path_root, path_ext = os.path.splitext(self.video_output_path)
+        if not path_ext:
+            path_ext = '.avi'
+
+        raw_path = f'{path_root}_raw{path_ext}'
+        detect_path = f'{path_root}_detect{path_ext}'
+        trajectory_path = f'{path_root}_trajectory{path_ext}'
+
+        if self.processing_metrics_output_path:
+            metrics_path = os.path.abspath(os.path.expanduser(self.processing_metrics_output_path))
+        else:
+            metrics_path = f'{path_root}_timing.csv'
+
+        video_dir = os.path.dirname(detect_path)
         if video_dir:
             os.makedirs(video_dir, exist_ok=True)
 
-        fourcc = cv2.VideoWriter_fourcc(*self.video_codec)
+        metrics_dir = os.path.dirname(metrics_path)
+        if metrics_dir:
+            os.makedirs(metrics_dir, exist_ok=True)
+
+        fourcc = cv2.VideoWriter.fourcc(*self.video_codec)
         side = 128 * max(1, int(self.video_scale))
-        self._writer = cv2.VideoWriter(
-            self.video_output_path,
+        video_fps = float(max(1.0, self.video_fps))
+
+        self._writer_raw = cv2.VideoWriter(
+            raw_path,
             fourcc,
-            float(max(1.0, self.video_fps)),
+            video_fps,
+            (side, side),
+            True,
+        )
+        self._writer_detect = cv2.VideoWriter(
+            detect_path,
+            fourcc,
+            video_fps,
+            (side, side),
+            True,
+        )
+        self._writer_traj = cv2.VideoWriter(
+            trajectory_path,
+            fourcc,
+            video_fps,
             (side, side),
             True,
         )
 
-        if not self._writer.isOpened():
-            self.get_logger().error(f'Failed to open video writer: {self.video_output_path}')
-            self._writer = None
+        bad_writer = (
+            self._writer_raw is None or not self._writer_raw.isOpened() or
+            self._writer_detect is None or not self._writer_detect.isOpened() or
+            self._writer_traj is None or not self._writer_traj.isOpened()
+        )
+        if bad_writer:
+            self.get_logger().error(
+                f'Failed to open one or more video writers: raw={raw_path}, detect={detect_path}, trajectory={trajectory_path}'
+            )
+            if self._writer_raw is not None:
+                self._writer_raw.release()
+            if self._writer_detect is not None:
+                self._writer_detect.release()
+            if self._writer_traj is not None:
+                self._writer_traj.release()
+            self._writer_raw = None
+            self._writer_detect = None
+            self._writer_traj = None
+        else:
+            self.get_logger().info(
+                f'Video outputs: raw={raw_path}, detect={detect_path}, trajectory={trajectory_path}, fps={video_fps:.1f}'
+            )
+
+        try:
+            self._metrics_file = open(metrics_path, 'w', newline='')
+            self._metrics_writer = csv.writer(self._metrics_file)
+            self._metrics_writer.writerow([
+                'ros_time_ns',
+                'batch_events',
+                'filtered_events',
+                'detected',
+                'confidence',
+                'filter_ms',
+                'detect_ms',
+                'avoid_ms',
+                'write_ms',
+                'total_ms',
+                'note',
+            ])
+            self._metrics_file.flush()
+            self.get_logger().info(f'Processing timing log: {metrics_path}')
+        except Exception as e:
+            self.get_logger().error(f'Failed to open timing log file {metrics_path}: {e}')
+            self._metrics_file = None
+            self._metrics_writer = None
 
     def destroy_node(self):
         self._running = False
@@ -185,9 +271,23 @@ class DvsMinimalRecordNode(Node):
                 self._serial.close()
             except Exception:
                 pass
-        if self._writer is not None:
-            self._writer.release()
-            self._writer = None
+        if self._writer_raw is not None:
+            self._writer_raw.release()
+            self._writer_raw = None
+        if self._writer_detect is not None:
+            self._writer_detect.release()
+            self._writer_detect = None
+        if self._writer_traj is not None:
+            self._writer_traj.release()
+            self._writer_traj = None
+        if self._metrics_file is not None:
+            try:
+                self._metrics_file.flush()
+                self._metrics_file.close()
+            except Exception:
+                pass
+            self._metrics_file = None
+            self._metrics_writer = None
         super().destroy_node()
 
     @staticmethod
@@ -244,19 +344,26 @@ class DvsMinimalRecordNode(Node):
                     self._serial = None
 
     def _process_batch(self) -> None:
+        t_total_start = time.perf_counter_ns()
         with self._lock:
             if not self._events:
                 return
             events = self._events
             self._events = []
 
+        t_filter_start = time.perf_counter_ns()
         filtered = self._event_filter.filter_batch(events)
         filtered = filter_small_connected_components(
             filtered,
             int(self.filter_min_component_pixels),
         )
+        t_filter_end = time.perf_counter_ns()
+
+        result = None
+        note = ''
 
         if len(filtered) < int(self.detect_min_events):
+            note = f'below_min_events:{len(filtered)}'
             self._publish_detection_status(
                 detected=False,
                 confidence=0.0,
@@ -266,12 +373,35 @@ class DvsMinimalRecordNode(Node):
                 support_pixels=0,
                 approach_score=0.0,
                 strategy=self.processing_strategy,
-                note=f'below_min_events:{len(filtered)}',
+                note=note,
             )
+
+            t_detect_end = time.perf_counter_ns()
+
+            t_avoid_start = time.perf_counter_ns()
             self.pub_avoid.publish(Twist())
-            self._write_frame(filtered, None)
+            t_avoid_end = time.perf_counter_ns()
+
+            t_write_start = time.perf_counter_ns()
+            self._write_frames(events, filtered, None)
+            t_write_end = time.perf_counter_ns()
+
+            total_ms = (t_write_end - t_total_start) / 1e6
+            self._log_processing_metrics(
+                batch_events=len(events),
+                filtered_events=len(filtered),
+                detected=False,
+                confidence=0.0,
+                filter_ms=(t_filter_end - t_filter_start) / 1e6,
+                detect_ms=(t_detect_end - t_filter_end) / 1e6,
+                avoid_ms=(t_avoid_end - t_avoid_start) / 1e6,
+                write_ms=(t_write_end - t_write_start) / 1e6,
+                total_ms=total_ms,
+                note=note,
+            )
             return
 
+        t_detect_start = time.perf_counter_ns()
         result = self._ball_detector.detect(
             filtered,
             self.processing_strategy,
@@ -285,6 +415,8 @@ class DvsMinimalRecordNode(Node):
                 f'min_circle_pixels_fail={result.support_pixels}<{self.detect_min_circle_pixels}'
             )
 
+        t_detect_end = time.perf_counter_ns()
+
         self._publish_detection_status(
             detected=result.detected,
             confidence=result.confidence,
@@ -297,6 +429,7 @@ class DvsMinimalRecordNode(Node):
             note=result.note,
         )
 
+        t_avoid_start = time.perf_counter_ns()
         vx, vy, vz, _ = compute_avoidance_command(
             result,
             frame_width=128,
@@ -309,8 +442,25 @@ class DvsMinimalRecordNode(Node):
         cmd.linear.y = float(vy)
         cmd.linear.z = float(vz)
         self.pub_avoid.publish(cmd)
+        t_avoid_end = time.perf_counter_ns()
 
-        self._write_frame(filtered, result)
+        t_write_start = time.perf_counter_ns()
+        self._write_frames(events, filtered, result)
+        t_write_end = time.perf_counter_ns()
+
+        total_ms = (t_write_end - t_total_start) / 1e6
+        self._log_processing_metrics(
+            batch_events=len(events),
+            filtered_events=len(filtered),
+            detected=bool(result.detected),
+            confidence=float(result.confidence),
+            filter_ms=(t_filter_end - t_filter_start) / 1e6,
+            detect_ms=(t_detect_end - t_detect_start) / 1e6,
+            avoid_ms=(t_avoid_end - t_avoid_start) / 1e6,
+            write_ms=(t_write_end - t_write_start) / 1e6,
+            total_ms=total_ms,
+            note=result.note,
+        )
 
     def _publish_detection_status(
         self,
@@ -342,12 +492,9 @@ class DvsMinimalRecordNode(Node):
         )
         self.pub_detection.publish(msg)
 
-    def _write_frame(self, filtered_events: List[Event], result) -> None:
-        if self._writer is None:
-            return
-
+    def _render_events_canvas(self, events: List[Event]) -> np.ndarray:
         canvas = np.zeros((128, 128, 3), dtype=np.uint8)
-        for x_f, y_f, p_i, _ in filtered_events:
+        for x_f, y_f, p_i, _ in events:
             x = int(x_f)
             y = int(y_f)
             if not (0 <= x < 128 and 0 <= y < 128):
@@ -356,6 +503,15 @@ class DvsMinimalRecordNode(Node):
                 canvas[y, x, 1] = 255
             else:
                 canvas[y, x, 0] = 255
+        return canvas
+
+    def _write_frames(self, raw_events: List[Event], filtered_events: List[Event], result) -> None:
+        if self._writer_raw is None or self._writer_detect is None or self._writer_traj is None:
+            return
+
+        raw_canvas = self._render_events_canvas(raw_events)
+        detect_canvas = self._render_events_canvas(filtered_events)
+        trajectory_canvas = np.zeros((128, 128, 3), dtype=np.uint8)
 
         if (
             result is not None
@@ -366,12 +522,56 @@ class DvsMinimalRecordNode(Node):
             cy = int(max(0, min(127, result.center_y)))
             rr = int(max(3, min(62, result.radius + float(self.draw_circle_expand_px))))
             thickness = max(1, int(self.draw_circle_thickness))
-            cv2.circle(canvas, (cx, cy), rr, (0, 0, 255), thickness)
-            cv2.circle(canvas, (cx, cy), 2, (0, 0, 255), -1)
+            cv2.circle(detect_canvas, (cx, cy), rr, (0, 0, 255), thickness)
+            cv2.circle(detect_canvas, (cx, cy), 2, (0, 0, 255), -1)
+            self._trajectory_points.append((cx, cy))
+
+        if len(self._trajectory_points) > 0:
+            for i in range(1, len(self._trajectory_points)):
+                p0 = self._trajectory_points[i - 1]
+                p1 = self._trajectory_points[i]
+                cv2.line(trajectory_canvas, p0, p1, (0, 255, 255), 1)
+            px, py = self._trajectory_points[-1]
+            cv2.circle(trajectory_canvas, (px, py), 2, (0, 0, 255), -1)
 
         side = 128 * max(1, int(self.video_scale))
-        frame = cv2.resize(canvas, (side, side), interpolation=cv2.INTER_NEAREST)
-        self._writer.write(frame)
+        raw_frame = cv2.resize(raw_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
+        detect_frame = cv2.resize(detect_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
+        trajectory_frame = cv2.resize(trajectory_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
+        self._writer_raw.write(raw_frame)
+        self._writer_detect.write(detect_frame)
+        self._writer_traj.write(trajectory_frame)
+
+    def _log_processing_metrics(
+        self,
+        batch_events: int,
+        filtered_events: int,
+        detected: bool,
+        confidence: float,
+        filter_ms: float,
+        detect_ms: float,
+        avoid_ms: float,
+        write_ms: float,
+        total_ms: float,
+        note: str,
+    ) -> None:
+        if self._metrics_writer is None or self._metrics_file is None:
+            return
+
+        self._metrics_writer.writerow([
+            int(self.get_clock().now().nanoseconds),
+            int(batch_events),
+            int(filtered_events),
+            int(bool(detected)),
+            f'{float(confidence):.4f}',
+            f'{float(filter_ms):.3f}',
+            f'{float(detect_ms):.3f}',
+            f'{float(avoid_ms):.3f}',
+            f'{float(write_ms):.3f}',
+            f'{float(total_ms):.3f}',
+            str(note).replace('\n', ' '),
+        ])
+        self._metrics_file.flush()
 
 
 def main(args=None) -> None:

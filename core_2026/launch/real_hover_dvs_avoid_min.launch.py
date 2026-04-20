@@ -36,7 +36,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('approach_score_mode', default_value='merged'),
         DeclareLaunchArgument('detect_min_circle_pixels', default_value='200'),
         DeclareLaunchArgument('video_output_path', default_value='~/dvs_filtered_result.avi'),
-        DeclareLaunchArgument('video_fps', default_value='30.0'),
+        DeclareLaunchArgument('video_fps', default_value='60.0'),
         DeclareLaunchArgument('video_scale', default_value='6'),
     ]
 
