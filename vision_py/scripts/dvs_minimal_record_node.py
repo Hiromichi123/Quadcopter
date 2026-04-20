@@ -128,8 +128,11 @@ class DvsMinimalRecordNode(Node):
         self._writer_raw = None
         self._writer_detect = None
         self._writer_traj = None
-        self._video_frame_period_ns = 0
-        self._next_video_frame_ns = 0
+        self._frame_side = 0
+        self._frame_lock = threading.Lock()
+        self._latest_raw_frame: Optional[np.ndarray] = None
+        self._latest_detect_frame: Optional[np.ndarray] = None
+        self._latest_trajectory_frame: Optional[np.ndarray] = None
         self._metrics_file = None
         self._metrics_writer = None
         self._trajectory_points: Deque[Tuple[int, int]] = deque(maxlen=max(10, int(self.trajectory_max_points)))
@@ -148,6 +151,12 @@ class DvsMinimalRecordNode(Node):
             self.publish_period_ms / 1000.0,
             self._process_batch,
         )
+        self._video_timer = None
+        if self.video_realtime_pacing:
+            self._video_timer = self.create_timer(
+                1.0 / float(max(1.0, self.video_fps)),
+                self._on_video_tick,
+            )
 
         self.get_logger().info(
             f'DVS minimal record node started: port={self.port} baud={self.baudrate} '
@@ -196,9 +205,14 @@ class DvsMinimalRecordNode(Node):
 
         fourcc = cv2.VideoWriter.fourcc(*self.video_codec)
         side = 128 * max(1, int(self.video_scale))
+        self._frame_side = side
         video_fps = float(max(1.0, self.video_fps))
-        self._video_frame_period_ns = int(1e9 / video_fps)
-        self._next_video_frame_ns = 0
+
+        blank = np.zeros((side, side, 3), dtype=np.uint8)
+        with self._frame_lock:
+            self._latest_raw_frame = blank.copy()
+            self._latest_detect_frame = blank.copy()
+            self._latest_trajectory_frame = blank.copy()
 
         self._writer_raw = cv2.VideoWriter(
             raw_path,
@@ -546,37 +560,42 @@ class DvsMinimalRecordNode(Node):
         detect_frame = cv2.resize(detect_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
         trajectory_frame = cv2.resize(trajectory_canvas, (side, side), interpolation=cv2.INTER_NEAREST)
 
-        self._write_video_triplet(raw_frame, detect_frame, trajectory_frame)
+        if not self.video_realtime_pacing:
+            self._write_video_triplet(raw_frame, detect_frame, trajectory_frame)
+            return
+
+        # 处理线程只更新最新帧缓存，实际写盘由固定帧率定时器完成，避免时间轴丢帧。
+        with self._frame_lock:
+            self._latest_raw_frame = raw_frame
+            self._latest_detect_frame = detect_frame
+            self._latest_trajectory_frame = trajectory_frame
 
     def _write_video_triplet(self, raw_frame: np.ndarray, detect_frame: np.ndarray, trajectory_frame: np.ndarray) -> None:
         if self._writer_raw is None or self._writer_detect is None or self._writer_traj is None:
             return
 
-        if not self.video_realtime_pacing or self._video_frame_period_ns <= 0:
-            self._writer_raw.write(raw_frame)
-            self._writer_detect.write(detect_frame)
-            self._writer_traj.write(trajectory_frame)
+        self._writer_raw.write(raw_frame)
+        self._writer_detect.write(detect_frame)
+        self._writer_traj.write(trajectory_frame)
+
+    def _on_video_tick(self) -> None:
+        if self._writer_raw is None or self._writer_detect is None or self._writer_traj is None:
             return
 
-        now_ns = time.monotonic_ns()
-        if self._next_video_frame_ns <= 0:
-            self._next_video_frame_ns = now_ns
+        with self._frame_lock:
+            raw_frame = self._latest_raw_frame
+            detect_frame = self._latest_detect_frame
+            trajectory_frame = self._latest_trajectory_frame
 
-        frames_to_write = 0
-        while self._next_video_frame_ns <= now_ns:
-            frames_to_write += 1
-            self._next_video_frame_ns += self._video_frame_period_ns
+        if raw_frame is None or detect_frame is None or trajectory_frame is None:
+            if self._frame_side <= 0:
+                return
+            blank = np.zeros((self._frame_side, self._frame_side, 3), dtype=np.uint8)
+            raw_frame = blank
+            detect_frame = blank
+            trajectory_frame = blank
 
-        # 限制单轮补帧数量，避免系统卡顿后一次性写入过多帧。
-        frames_to_write = min(frames_to_write, 5)
-
-        if frames_to_write <= 0:
-            return
-
-        for _ in range(frames_to_write):
-            self._writer_raw.write(raw_frame)
-            self._writer_detect.write(detect_frame)
-            self._writer_traj.write(trajectory_frame)
+        self._write_video_triplet(raw_frame, detect_frame, trajectory_frame)
 
     def _log_processing_metrics(
         self,
