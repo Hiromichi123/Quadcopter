@@ -27,8 +27,8 @@ def generate_launch_description() -> LaunchDescription:
     video_scale = LaunchConfiguration('video_scale')
 
     launch_args = [
-        DeclareLaunchArgument('fcu_url', default_value='serial:///dev/ttyACM0:57600'),
-        DeclareLaunchArgument('dvs_port', default_value='/dev/ttyACM1'),
+        DeclareLaunchArgument('fcu_url', default_value='serial:///dev/ttyACM1:57600'),
+        DeclareLaunchArgument('dvs_port', default_value='/dev/ttyACM0'),
         DeclareLaunchArgument('real_robot_odom_topic', default_value='/Odometry'),
         DeclareLaunchArgument('processing_strategy', default_value='cluster'),
         DeclareLaunchArgument('filter_strength', default_value='0.40'),
