@@ -67,7 +67,7 @@ void MissionExecutor::on_hover() {
         return;
     }
 
-    // 优先被动接收 DVS 规避指令（高优先级，降低轮询等待开销）
+    // 纯 DVS 被动触发规避（后退 + 左/右 + 上抬）
     if (dvs_.has_recent_dvs_avoid(kDvsCmdFreshSec)) {
         const auto cmd = dvs_.get_dvs_avoid_cmd();
         const bool has_motion =
@@ -76,67 +76,62 @@ void MissionExecutor::on_hover() {
             (std::abs(cmd.linear.z) > 1e-4);
 
         if (has_motion) {
+            const bool cooldown_ok =
+                (last_avoid_time_.nanoseconds() == 0) ||
+                ((now - last_avoid_time_).seconds() >= kDvsAvoidCooldownSec);
+            if (!cooldown_ok) {
+                cmd_.publish_position(hover_target_);
+                return;
+            }
+
+            last_avoid_time_ = now;
             const auto s = state_.get_state();
             Target origin_target(s.x, s.y, default_altitude_, s.yaw);
+            const float side_sign = (cmd.linear.y >= 0.0) ? 1.0f : -1.0f;
             Target avoid_target(
-                s.x + kDvsAvoidOffsetX,
-                s.y + kDvsAvoidOffsetY,
-                default_altitude_,
+                s.x + kDvsAvoidBackX,
+                s.y + (kDvsAvoidSideY * side_sign),
+                default_altitude_ + kDvsAvoidUpZ,
                 s.yaw);
 
             RCLCPP_WARN_THROTTLE(
                 logger_,
                 steady_clock_,
                 500,
-                "[HOVER] DVS被动触发规避: 固定方向位移 (dx=%.2f, dy=%.2f), 停留 %.2f s 后返回",
-                kDvsAvoidOffsetX,
-                kDvsAvoidOffsetY,
+                "[HOVER] DVS触发规避: 后退上抬侧移 (dx=%.2f, dy=%.2f, dz=%.2f), 停留 %.2f s 后返回",
+                kDvsAvoidBackX,
+                kDvsAvoidSideY * side_sign,
+                kDvsAvoidUpZ,
                 kDvsAvoidHoldSec);
 
-            fc_.fly_to_target(
-                target = avoid_target,
-                timeout_sec = kDvsMoveTimeoutSec,
-                stable_time_sec = kDvsMoveStableSec,
-                frame_rate = 20);
+            fc_.fly_to_target_pid(
+                avoid_target,
+                kDvsMoveTimeoutSec,
+                kDvsMoveStableSec,
+                30);
 
-            // 在规避位姿短暂停留，再返回触发点。
-            fc_.fly_to_target(
-                target = avoid_target,
-                timeout_sec = kDvsAvoidHoldSec,
-                stable_time_sec = 0.0f,
-                frame_rate = 20);
+            // 在规避位姿持续发布 setpoint 保持 kDvsAvoidHoldSec。
+            const rclcpp::Time hold_start = steady_clock_.now();
+            rclcpp::Rate hold_rate(30);
+            while (rclcpp::ok() && (steady_clock_.now() - hold_start).seconds() < kDvsAvoidHoldSec) {
+                cmd_.publish_position(avoid_target);
+                hold_rate.sleep();
+            }
 
-            fc_.fly_to_target(
-                target = origin_target,
-                timeout_sec = kDvsMoveTimeoutSec,
-                stable_time_sec = kDvsMoveStableSec,
-                frame_rate = 20);
+            fc_.fly_to_target_pid(
+                origin_target,
+                kDvsMoveTimeoutSec,
+                kDvsMoveStableSec,
+                30);
             return;
         }
     }
 
-    bool trigger_avoid = false;
-    if (vision_.has_vision()) {
-        const auto v = vision_.get_vision();
-        const bool in_window = std::abs(v.center_x1_error - kAvoidTriggerValue) <= kAvoidTriggerTol;
-        const bool cooldown_ok = (last_avoid_time_.nanoseconds() == 0) || ((now - last_avoid_time_).seconds() >= kAvoidCooldownSec);
-        trigger_avoid = in_window && cooldown_ok;
-    }
-
-    if (trigger_avoid) {
-        last_avoid_time_ = now;
-        const auto s = state_.get_state();
-        Target avoid_target(s.x + kAvoidOffsetX, s.y, default_altitude_, s.yaw);
-        RCLCPP_WARN(logger_, "[HOVER] 视觉触发规避：center_x1_error 命中特定值，执行侧向规避并返回原位");
-        fc_.fly_to_target(target = avoid_target, timeout_sec = 6.0f, stable_time_sec = 0.2f, frame_rate = 20);
-        fc_.fly_to_target(target = hover_target_, timeout_sec = 6.0f, stable_time_sec = 0.2f, frame_rate = 20);
-    } else {
-        RCLCPP_INFO_THROTTLE(
-            logger_, steady_clock_, 1000,
-            "[HOVER] 悬停中，剩余 %.1f s",
-            kMissionDurationSec - static_cast<float>(elapsed));
-        cmd_.publish_position(hover_target_);
-    }
+    RCLCPP_INFO_THROTTLE(
+        logger_, steady_clock_, 1000,
+        "[HOVER] 悬停中，剩余 %.1f s",
+        kMissionDurationSec - static_cast<float>(elapsed));
+    cmd_.publish_position(hover_target_);
 }
 
 // 状态：LAND

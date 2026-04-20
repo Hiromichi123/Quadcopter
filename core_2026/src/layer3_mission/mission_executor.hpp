@@ -46,16 +46,14 @@ private:
 
     // ===== 具名常量组 =====
     static constexpr float  kMissionDurationSec = 20.0f;  // 悬停阶段总时长
-    static constexpr int    kAvoidTriggerValue  = 100;    // 视觉触发特定值
-    static constexpr int    kAvoidTriggerTol    = 5;      // 触发容差
-    static constexpr float  kAvoidOffsetX       = 0.8f;   // 规避动作X方向偏移
-    static constexpr float  kAvoidCooldownSec   = 3.0f;   // 相邻规避最小间隔
+    static constexpr float  kDvsAvoidCooldownSec = 0.8f;  // DVS相邻规避最小间隔
     static constexpr float  kDvsCmdFreshSec     = 0.12f;  // DVS规避指令新鲜度门限
-    static constexpr float  kDvsAvoidOffsetX    = 0.8f;   // DVS规避固定方向位移（X）
-    static constexpr float  kDvsAvoidOffsetY    = 0.0f;   // DVS规避固定方向位移（Y）
+    static constexpr float  kDvsAvoidBackX      = -0.8f;  // DVS规避后退位移（X）
+    static constexpr float  kDvsAvoidSideY      = 0.6f;   // DVS规避侧向位移幅值（Y，按指令左右决定符号）
+    static constexpr float  kDvsAvoidUpZ        = 0.25f;  // DVS规避上抬位移（Z）
     static constexpr float  kDvsAvoidHoldSec    = 0.5f;   // DVS规避后停留时间
     static constexpr float  kDvsMoveTimeoutSec  = 4.0f;   // DVS位移动作超时
-    static constexpr float  kDvsMoveStableSec   = 0.1f;   // DVS位移动作稳定时间
+    static constexpr float  kDvsMoveStableSec   = 0.05f;  // DVS位移动作稳定时间
     static constexpr float  kLandVz           = -0.20f;   // 降落速度
     static constexpr float  kLandDuration     = 5.0f;     // 降落持续秒
 
