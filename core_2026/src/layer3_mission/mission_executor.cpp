@@ -127,25 +127,16 @@ void MissionExecutor::on_hover() {
                 logger_,
                 steady_clock_,
                 500,
-                "[HOVER] DVS触发规避: 后退上抬侧移 (dx=%.2f, dy=%.2f, dz=%.2f), 停留 %.2f s 后返回",
+                "[HOVER] DVS触发规避: 后退上抬侧移 (dx=%.2f, dy=%.2f, dz=%.2f), 到达后立即返回",
                 avoid_dx,
                 avoid_dy,
-                avoid_dz,
-                kDvsAvoidHoldSec);
+                avoid_dz);
 
             fc_.fly_to_target_pid(
                 avoid_target,
                 kDvsMoveTimeoutSec,
                 kDvsMoveStableSec,
                 30);
-
-            // 在规避位姿持续发布 setpoint 保持 kDvsAvoidHoldSec。
-            const rclcpp::Time hold_start = steady_clock_.now();
-            rclcpp::Rate hold_rate(30);
-            while (rclcpp::ok() && (steady_clock_.now() - hold_start).seconds() < kDvsAvoidHoldSec) {
-                cmd_.publish_position(avoid_target);
-                hold_rate.sleep();
-            }
 
             fc_.fly_to_target_pid(
                 origin_target,
