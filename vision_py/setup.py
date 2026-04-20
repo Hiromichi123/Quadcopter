@@ -26,6 +26,7 @@ setup(
             'vision_node = scripts.vision_node:main',
             'dvs_raw_serial_node = scripts.dvs_raw_serial_node:main',
             'dvs_minimal_record_node = scripts.dvs_minimal_record_node:main',
+            'dvs_avoid_key_node = scripts.dvs_avoid_key_node:main',
         ],
     },
     data_files=[

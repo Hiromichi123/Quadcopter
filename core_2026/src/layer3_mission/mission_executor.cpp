@@ -96,12 +96,6 @@ void MissionExecutor::on_hover() {
     // 纯 DVS 被动触发规避（后退 + 左/右 + 上抬）
     if (dvs_.has_recent_dvs_avoid(kDvsCmdFreshSec)) {
         const auto cmd = dvs_.get_dvs_avoid_cmd();
-        const bool has_motion =
-            (std::abs(cmd.linear.x) > 1e-4) ||
-            (std::abs(cmd.linear.y) > 1e-4) ||
-            (std::abs(cmd.linear.z) > 1e-4);
-
-        if (has_motion) {
             const bool cooldown_ok =
                 (last_avoid_time_.nanoseconds() == 0) ||
                 ((now - last_avoid_time_).seconds() >= kDvsAvoidCooldownSec);
@@ -159,7 +153,6 @@ void MissionExecutor::on_hover() {
             dvs_block_until_ = steady_clock_.now() + rclcpp::Duration::from_seconds(kDvsRearmDelaySec);
             dvs_accept_enabled_ = false;
             return;
-        }
     }
 
     RCLCPP_INFO_THROTTLE(
