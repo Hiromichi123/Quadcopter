@@ -26,7 +26,7 @@ public:
                     IDvsAvoidProvider& dvs,    // DVS规避接口
                     ICommandPublisher& cmd,    // 指令发布接口（悬停直发setpoint）
                     rclcpp::Logger     logger, // DroneHAL日志记录器
-                    float              default_altitude = 1.0f);
+                    float              default_altitude = 1.2f);
 
     void run(); // 开始执行任务
 
@@ -59,7 +59,7 @@ private:
     static constexpr float  kHoverStablePosTolXY = 0.12f; // 悬停稳定判定 XY 误差门限
     static constexpr float  kHoverStablePosTolZ  = 0.10f; // 悬停稳定判定 Z 误差门限
     static constexpr float  kHoverStableEnableSec = 1.0f; // 连续稳定悬停多久后才接收 DVS
-    static constexpr float  kDvsRearmDelaySec    = 0.6f; // 规避回位后 DVS 解锁额外延时
+    static constexpr float  kDvsRearmDelaySec    = 0.6f;  // 规避回位后 DVS 解锁额外延时
     static constexpr float  kLandVz           = -0.20f;   // 降落速度
     static constexpr float  kLandDuration     = 5.0f;     // 降落持续秒
 
