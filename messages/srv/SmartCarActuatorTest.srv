@@ -1,0 +1,13 @@
+uint16 TEST_SERVO_ANGLE=1
+uint16 TEST_SERVO_PWM=2
+uint16 TEST_MOTOR_RPM=4
+
+uint16 test_mask
+float32 servo_angle_deg
+uint16 servo_pwm_us
+int16 motor1_rpm
+int16 motor2_rpm
+uint16 duration_ms
+---
+bool accepted
+string message

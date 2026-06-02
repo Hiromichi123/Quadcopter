@@ -1,0 +1,16 @@
+uint8 SMART_CAR_MODE_IDLE=0
+uint8 SMART_CAR_MODE_MANUAL=1
+uint8 SMART_CAR_MODE_AUTO=2
+uint8 SMART_CAR_MODE_CALIB=3
+
+uint16 SMART_CAR_CONTROL_FLAG_ENABLE=1
+uint16 SMART_CAR_CONTROL_FLAG_BRAKE=2
+uint16 SMART_CAR_CONTROL_FLAG_REVERSE=4
+uint16 SMART_CAR_CONTROL_FLAG_HOLD=8
+
+uint8 mode
+uint16 flags
+float32 target_speed_mps
+float32 target_curvature
+float32 target_yaw_rate_dps
+float32 target_accel_mps2

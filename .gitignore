@@ -3,4 +3,5 @@
 /build
 /install
 /log
-.pyc
+*.pyc
+__pycache__/

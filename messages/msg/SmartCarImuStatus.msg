@@ -1,0 +1,16 @@
+builtin_interfaces/Time stamp
+uint32 time_boot_ms
+uint32 sample_count
+uint32 overrun_count
+uint32 error_count
+int32 gyro_x_mdps
+int32 gyro_y_mdps
+int32 gyro_z_mdps
+float32 yaw_rate_raw_dps
+float32 yaw_rate_dps
+float32 gyro_bias_z_dps
+int16 accel_x_mg
+int16 accel_y_mg
+int16 accel_z_mg
+int16 temperature_c_x100
+uint8 calibrated

@@ -1,0 +1,180 @@
+<?xml version="1.0"?>
+<mavlink>
+  <include>common.xml</include>
+  <version>3</version>
+  <dialect>210</dialect>
+
+  <enums>
+    <enum name="SMART_CAR_MODE">
+      <entry value="0" name="SMART_CAR_MODE_IDLE"/>
+      <entry value="1" name="SMART_CAR_MODE_MANUAL"/>
+      <entry value="2" name="SMART_CAR_MODE_AUTO"/>
+      <entry value="3" name="SMART_CAR_MODE_CALIB"/>
+    </enum>
+
+    <enum name="SMART_CAR_STATE">
+      <entry value="0" name="SMART_CAR_STATE_IDLE"/>
+      <entry value="1" name="SMART_CAR_STATE_ARMED"/>
+      <entry value="2" name="SMART_CAR_STATE_RUNNING"/>
+      <entry value="3" name="SMART_CAR_STATE_FAULT"/>
+      <entry value="4" name="SMART_CAR_STATE_CALIB"/>
+    </enum>
+
+    <enum name="SMART_CAR_CONTROL_FLAGS" bitmask="true">
+      <entry value="1" name="SMART_CAR_CONTROL_FLAG_ENABLE"/>
+      <entry value="2" name="SMART_CAR_CONTROL_FLAG_BRAKE"/>
+      <entry value="4" name="SMART_CAR_CONTROL_FLAG_REVERSE"/>
+      <entry value="8" name="SMART_CAR_CONTROL_FLAG_HOLD"/>
+    </enum>
+
+    <enum name="SMART_CAR_FAULT_FLAGS" bitmask="true">
+      <entry value="1" name="SMART_CAR_FAULT_CMD_TIMEOUT"/>
+      <entry value="2" name="SMART_CAR_FAULT_MOTOR1_OFFLINE"/>
+      <entry value="4" name="SMART_CAR_FAULT_MOTOR2_OFFLINE"/>
+      <entry value="8" name="SMART_CAR_FAULT_IMU_NOT_READY"/>
+      <entry value="16" name="SMART_CAR_FAULT_CAN_ERROR"/>
+      <entry value="32" name="SMART_CAR_FAULT_SERVO_CLAMPED"/>
+    </enum>
+
+    <enum name="SMART_CAR_COMMAND">
+      <entry value="1" name="SMART_CAR_COMMAND_ENABLE"/>
+      <entry value="2" name="SMART_CAR_COMMAND_DISABLE"/>
+      <entry value="3" name="SMART_CAR_COMMAND_STOP"/>
+      <entry value="4" name="SMART_CAR_COMMAND_RECENTER_SERVO"/>
+      <entry value="5" name="SMART_CAR_COMMAND_GYRO_CAL"/>
+      <entry value="6" name="SMART_CAR_COMMAND_CLEAR_FAULTS"/>
+      <entry value="7" name="SMART_CAR_COMMAND_START_CURVATURE_CAL_POINT"/>
+      <entry value="8" name="SMART_CAR_COMMAND_START_CURVATURE_CAL_LEFT"/>
+      <entry value="9" name="SMART_CAR_COMMAND_START_CURVATURE_CAL_RIGHT"/>
+      <entry value="10" name="SMART_CAR_COMMAND_STOP_CURVATURE_CAL"/>
+      <entry value="11" name="SMART_CAR_COMMAND_FIREWATER_OFF"/>
+    </enum>
+  </enums>
+
+  <messages>
+    <message id="42000" name="SMART_CAR_CONTROL_SETPOINT">
+      <description>High-level speed and curvature control setpoint for the smart car.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the host.</field>
+      <field type="float" name="target_speed_mps" units="m/s">Target vehicle speed. Forward is positive.</field>
+      <field type="float" name="target_curvature" units="1/m">Target curvature. Left turn is positive.</field>
+      <field type="float" name="target_yaw_rate_dps" units="deg/s">Optional target yaw rate.</field>
+      <field type="float" name="target_accel_mps2" units="m/s/s">Optional acceleration limit.</field>
+      <field type="uint16_t" name="seq">Host control sequence number.</field>
+      <field type="uint16_t" name="flags" enum="SMART_CAR_CONTROL_FLAGS">Control flags.</field>
+      <field type="uint8_t" name="target_system">System ID.</field>
+      <field type="uint8_t" name="target_component">Component ID.</field>
+      <field type="uint8_t" name="mode" enum="SMART_CAR_MODE">Requested control mode.</field>
+    </message>
+
+    <message id="42001" name="SMART_CAR_STATUS">
+      <description>Overall smart car system status.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the vehicle.</field>
+      <field type="uint32_t" name="fault_flags" enum="SMART_CAR_FAULT_FLAGS">Fault flags.</field>
+      <field type="uint32_t" name="warn_flags">Warning flags.</field>
+      <field type="uint16_t" name="cmd_age_ms" units="ms">Age of the last accepted control command.</field>
+      <field type="uint16_t" name="control_loop_hz" units="Hz">Estimated control loop frequency.</field>
+      <field type="uint8_t" name="mode" enum="SMART_CAR_MODE">Current mode.</field>
+      <field type="uint8_t" name="state" enum="SMART_CAR_STATE">Current state.</field>
+      <field type="uint8_t" name="imu_online">IMU online flag.</field>
+      <field type="uint8_t" name="can_online">CAN online flag.</field>
+      <field type="uint8_t" name="host_online">Host online flag.</field>
+      <field type="uint8_t" name="servo_online">Servo online flag.</field>
+      <field type="uint8_t" name="motor_online_mask">Motor online bitmask.</field>
+    </message>
+
+    <message id="42002" name="SMART_CAR_MOTION_STATE">
+      <description>Vehicle motion and steering state.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the vehicle.</field>
+      <field type="float" name="speed_mps" units="m/s">Estimated vehicle speed.</field>
+      <field type="float" name="target_speed_mps" units="m/s">Current target speed.</field>
+      <field type="float" name="yaw_rate_dps" units="deg/s">Filtered yaw rate.</field>
+      <field type="float" name="yaw_deg" units="deg">Integrated debug yaw.</field>
+      <field type="float" name="curvature_meas" units="1/m">Measured curvature.</field>
+      <field type="float" name="curvature_cmd" units="1/m">Commanded curvature.</field>
+      <field type="float" name="steering_angle_deg" units="deg">Steering servo angle.</field>
+      <field type="uint16_t" name="steering_pwm_us" units="us">Steering PWM pulse width.</field>
+      <field type="uint8_t" name="steering_clamped">Steering clamp flag.</field>
+    </message>
+
+    <message id="42003" name="SMART_CAR_MOTOR_STATUS">
+      <description>Dual M2006 motor status.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the vehicle.</field>
+      <field type="uint32_t" name="can_tx_busy_count">CAN TX busy count.</field>
+      <field type="uint32_t" name="can_error_count">CAN error count.</field>
+      <field type="int16_t" name="target_rpm_1" units="rpm">Motor 1 target RPM.</field>
+      <field type="int16_t" name="target_rpm_2" units="rpm">Motor 2 target RPM.</field>
+      <field type="int16_t" name="actual_rpm_1" units="rpm">Motor 1 actual RPM.</field>
+      <field type="int16_t" name="actual_rpm_2" units="rpm">Motor 2 actual RPM.</field>
+      <field type="int16_t" name="current_cmd_1">Motor 1 command current.</field>
+      <field type="int16_t" name="current_cmd_2">Motor 2 command current.</field>
+      <field type="int16_t" name="feedback_current_1">Motor 1 feedback current.</field>
+      <field type="int16_t" name="feedback_current_2">Motor 2 feedback current.</field>
+      <field type="uint16_t" name="angle_1">Motor 1 encoder angle.</field>
+      <field type="uint16_t" name="angle_2">Motor 2 encoder angle.</field>
+      <field type="uint8_t" name="online_mask">Motor online bitmask.</field>
+    </message>
+
+    <message id="42004" name="SMART_CAR_IMU_STATUS">
+      <description>IMU and yaw-rate estimator status.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the vehicle.</field>
+      <field type="uint32_t" name="sample_count">IMU sample count.</field>
+      <field type="uint32_t" name="overrun_count">IMU overrun count.</field>
+      <field type="uint32_t" name="error_count">IMU error count.</field>
+      <field type="int32_t" name="gyro_x_mdps" units="mdeg/s">Raw gyro X.</field>
+      <field type="int32_t" name="gyro_y_mdps" units="mdeg/s">Raw gyro Y.</field>
+      <field type="int32_t" name="gyro_z_mdps" units="mdeg/s">Raw gyro Z.</field>
+      <field type="float" name="yaw_rate_raw_dps" units="deg/s">Raw yaw rate.</field>
+      <field type="float" name="yaw_rate_dps" units="deg/s">Filtered yaw rate.</field>
+      <field type="float" name="gyro_bias_z_dps" units="deg/s">Yaw gyro bias.</field>
+      <field type="int16_t" name="accel_x_mg" units="mG">Accel X.</field>
+      <field type="int16_t" name="accel_y_mg" units="mG">Accel Y.</field>
+      <field type="int16_t" name="accel_z_mg" units="mG">Accel Z.</field>
+      <field type="int16_t" name="temperature_c_x100" units="cdegC">IMU temperature.</field>
+      <field type="uint8_t" name="calibrated">Gyro calibrated flag.</field>
+    </message>
+
+    <message id="42005" name="SMART_CAR_ACTUATOR_TEST">
+      <description>Direct actuator test command for debug and calibration.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the host.</field>
+      <field type="float" name="servo_angle_deg" units="deg">Servo test angle.</field>
+      <field type="uint16_t" name="test_mask">Test selector bitmask.</field>
+      <field type="uint16_t" name="servo_pwm_us" units="us">Servo test pulse.</field>
+      <field type="uint16_t" name="duration_ms" units="ms">Test duration. Zero means continuous.</field>
+      <field type="int16_t" name="motor1_rpm" units="rpm">Motor 1 test target.</field>
+      <field type="int16_t" name="motor2_rpm" units="rpm">Motor 2 test target.</field>
+      <field type="uint8_t" name="target_system">System ID.</field>
+      <field type="uint8_t" name="target_component">Component ID.</field>
+    </message>
+
+    <message id="42006" name="SMART_CAR_CALIB_STATUS">
+      <description>Curvature calibration state and result.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the vehicle.</field>
+      <field type="uint32_t" name="point_id">Calibration point ID.</field>
+      <field type="uint32_t" name="sweep_index">Current sweep index.</field>
+      <field type="uint32_t" name="sweep_count">Sweep point count.</field>
+      <field type="uint32_t" name="valid_count">Valid sample count.</field>
+      <field type="uint32_t" name="invalid_count">Invalid sample count.</field>
+      <field type="float" name="v_center_avg" units="m/s">Average center speed.</field>
+      <field type="float" name="yaw_rate_avg" units="deg/s">Average yaw rate.</field>
+      <field type="float" name="kappa_avg" units="1/m">Average curvature.</field>
+      <field type="float" name="radius_est" units="m">Estimated radius.</field>
+      <field type="int16_t" name="target_rpm" units="rpm">Calibration target RPM.</field>
+      <field type="uint16_t" name="servo_pwm_us" units="us">Calibration servo pulse.</field>
+      <field type="uint8_t" name="state">Calibration state.</field>
+      <field type="uint8_t" name="sweep_enabled">Sweep enabled flag.</field>
+      <field type="uint8_t" name="yaw_sign_inverted">Yaw sign inverted flag.</field>
+    </message>
+
+    <message id="42007" name="SMART_CAR_COMMAND">
+      <description>Discrete smart car command with four float parameters.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp from the host.</field>
+      <field type="float" name="param1">Command parameter 1.</field>
+      <field type="float" name="param2">Command parameter 2.</field>
+      <field type="float" name="param3">Command parameter 3.</field>
+      <field type="float" name="param4">Command parameter 4.</field>
+      <field type="uint16_t" name="command" enum="SMART_CAR_COMMAND">Command ID.</field>
+      <field type="uint8_t" name="target_system">System ID.</field>
+      <field type="uint8_t" name="target_component">Component ID.</field>
+    </message>
+  </messages>
+</mavlink>

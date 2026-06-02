@@ -1,0 +1,11 @@
+builtin_interfaces/Time stamp
+uint32 time_boot_ms
+float32 speed_mps
+float32 target_speed_mps
+float32 yaw_rate_dps
+float32 yaw_deg
+float32 curvature_meas
+float32 curvature_cmd
+float32 steering_angle_deg
+uint16 steering_pwm_us
+uint8 steering_clamped

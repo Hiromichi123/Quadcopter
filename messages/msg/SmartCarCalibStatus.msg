@@ -1,0 +1,16 @@
+builtin_interfaces/Time stamp
+uint32 time_boot_ms
+uint32 point_id
+uint32 sweep_index
+uint32 sweep_count
+uint32 valid_count
+uint32 invalid_count
+float32 v_center_avg
+float32 yaw_rate_avg
+float32 kappa_avg
+float32 radius_est
+int16 target_rpm
+uint16 servo_pwm_us
+uint8 state
+uint8 sweep_enabled
+uint8 yaw_sign_inverted

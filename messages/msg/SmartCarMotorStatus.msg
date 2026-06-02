@@ -1,0 +1,15 @@
+builtin_interfaces/Time stamp
+uint32 time_boot_ms
+int16 target_rpm_1
+int16 target_rpm_2
+int16 actual_rpm_1
+int16 actual_rpm_2
+int16 current_cmd_1
+int16 current_cmd_2
+int16 feedback_current_1
+int16 feedback_current_2
+uint16 angle_1
+uint16 angle_2
+uint8 online_mask
+uint32 can_tx_busy_count
+uint32 can_error_count

@@ -19,6 +19,15 @@ find_package(builtin_interfaces REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/VisionMsg.msg"
   "msg/Vision.msg"
+  "msg/SmartCarControlSetpoint.msg"
+  "msg/SmartCarStatus.msg"
+  "msg/SmartCarMotionState.msg"
+  "msg/SmartCarMotorStatus.msg"
+  "msg/SmartCarImuStatus.msg"
+  "msg/SmartCarCalibStatus.msg"
+  "msg/PlatformTarget.msg"
+  "srv/SmartCarCommand.srv"
+  "srv/SmartCarActuatorTest.srv"
   "action/Takeoff.action"
   "action/GoToTarget.action"
   "action/TrackVelocity.action"
@@ -31,6 +40,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 ament_export_dependencies(rosidl_default_runtime)
 
-install(DIRECTORY msg action DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY msg srv action DESTINATION share/${PROJECT_NAME})
 
 ament_package()
