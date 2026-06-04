@@ -60,6 +60,25 @@ std::string statustext_to_string(const mavlink::mavlink_message_t & mav_msg)
   return mavlink::to_string(status_text.text);
 }
 
+bool is_smart_car_telemetry_msg(const mavlink::msgid_t msgid)
+{
+  return msgid == sc::MSG_ID_SMART_CAR_STATUS ||
+         msgid == sc::MSG_ID_SMART_CAR_MOTION_STATE ||
+         msgid == sc::MSG_ID_SMART_CAR_MOTOR_STATUS ||
+         msgid == sc::MSG_ID_SMART_CAR_IMU_STATUS ||
+         msgid == sc::MSG_ID_SMART_CAR_CALIB_STATUS;
+}
+
+bool finite_and_limited(const float value, const float limit)
+{
+  return std::isfinite(value) && std::abs(value) <= limit;
+}
+
+bool plausible_servo_pwm(const uint16_t pwm_us)
+{
+  return pwm_us >= 500 && pwm_us <= 2500;
+}
+
 }  // namespace
 
 class SmartCarBridgeNode final : public rclcpp::Node
@@ -105,8 +124,8 @@ private:
     target_component_ = static_cast<uint8_t>(declare_parameter<int>("target_component", 0));
     host_system_ = static_cast<uint8_t>(declare_parameter<int>("host_system", 255));
     host_component_ = static_cast<uint8_t>(declare_parameter<int>("host_component", 191));
-    control_rate_hz_ = declare_parameter<double>("control_rate_hz", 20.0);
-    control_input_timeout_ms_ = declare_parameter<int>("control_input_timeout_ms", 150);
+    control_rate_hz_ = declare_parameter<double>("control_rate_hz", 50.0);
+    control_input_timeout_ms_ = declare_parameter<int>("control_input_timeout_ms", 500);
     max_speed_mps_ = declare_parameter<double>("max_speed_mps", 1.5);
     max_curvature_ = declare_parameter<double>("max_curvature", 2.5);
 
@@ -174,6 +193,15 @@ private:
     latest_control_ = *msg;
     latest_control_time_ = now();
     has_control_ = true;
+    RCLCPP_INFO_THROTTLE(
+      get_logger(),
+      *get_clock(),
+      1000,
+      "RX ROS setpoint: mode=%u flags=0x%04x speed=%.3f curvature=%.3f",
+      msg->mode,
+      msg->flags,
+      msg->target_speed_mps,
+      msg->target_curvature);
   }
 
   void on_platform_target(const messages::msg::PlatformTarget::SharedPtr msg)
@@ -233,16 +261,25 @@ private:
 
     messages::msg::SmartCarControlSetpoint control;
     bool timeout = true;
+    int64_t control_age_ms = -1;
     {
       std::lock_guard<std::mutex> lock(control_mutex_);
       if (has_control_) {
-        const auto age_ms = (now() - latest_control_time_).nanoseconds() / 1000000;
-        timeout = age_ms > control_input_timeout_ms_;
+        control_age_ms = (now() - latest_control_time_).nanoseconds() / 1000000;
+        timeout = control_age_ms > control_input_timeout_ms_;
         control = latest_control_;
       }
     }
 
     if (!has_control_ || timeout) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(),
+        *get_clock(),
+        1000,
+        "Control input timeout: has_control=%s age_ms=%ld limit_ms=%d; sending brake",
+        has_control_ ? "true" : "false",
+        static_cast<long>(control_age_ms),
+        control_input_timeout_ms_);
       control.mode = sc::SMART_CAR_MODE_MANUAL;
       control.flags = sc::SMART_CAR_CONTROL_FLAG_BRAKE;
       control.target_speed_mps = 0.0F;
@@ -265,12 +302,26 @@ private:
     mav_control.target_component = target_component_;
     mav_control.mode = control.mode;
 
+    RCLCPP_INFO_THROTTLE(
+      get_logger(),
+      *get_clock(),
+      1000,
+      "TX MAVLink setpoint: mode=%u flags=0x%04x speed=%.3f curvature=%.3f timeout=%s",
+      mav_control.mode,
+      mav_control.flags,
+      mav_control.target_speed_mps,
+      mav_control.target_curvature,
+      timeout ? "true" : "false");
+
     publish_mavlink(sc::pack_control_setpoint(mav_control, host_system_, host_component_));
   }
 
   void on_mavlink_message(const mavros_msgs::msg::Mavlink::SharedPtr ros_msg)
   {
-    if (ros_msg->framing_status != mavros_msgs::msg::Mavlink::FRAMING_OK) {
+    if (
+      ros_msg->framing_status != mavros_msgs::msg::Mavlink::FRAMING_OK &&
+      !is_smart_car_telemetry_msg(ros_msg->msgid))
+    {
       return;
     }
 
@@ -324,6 +375,17 @@ private:
     if (!sc::decode_status(mav_msg, data)) {
       return;
     }
+    if (
+      data.mode > messages::msg::SmartCarStatus::SMART_CAR_MODE_CALIB ||
+      data.state > messages::msg::SmartCarStatus::SMART_CAR_STATE_CALIB ||
+      data.host_online > 1 ||
+      data.imu_online > 1 ||
+      data.can_online > 1 ||
+      data.servo_online > 1 ||
+      data.motor_online_mask > 0x03)
+    {
+      return;
+    }
     messages::msg::SmartCarStatus msg;
     msg.stamp = now();
     msg.time_boot_ms = data.time_boot_ms;
@@ -347,6 +409,17 @@ private:
     if (!sc::decode_motion_state(mav_msg, data)) {
       return;
     }
+    if (
+      !finite_and_limited(data.speed_mps, static_cast<float>(max_speed_mps_ * 2.0)) ||
+      !finite_and_limited(data.target_speed_mps, static_cast<float>(max_speed_mps_ * 2.0)) ||
+      !finite_and_limited(data.curvature_meas, static_cast<float>(max_curvature_ * 4.0)) ||
+      !finite_and_limited(data.curvature_cmd, static_cast<float>(max_curvature_ * 2.0)) ||
+      !finite_and_limited(data.steering_angle_deg, 180.0F) ||
+      !plausible_servo_pwm(data.steering_pwm_us) ||
+      data.steering_clamped > 1)
+    {
+      return;
+    }
     messages::msg::SmartCarMotionState msg;
     msg.stamp = now();
     msg.time_boot_ms = data.time_boot_ms;
@@ -366,6 +439,15 @@ private:
   {
     sc::MotorStatus data;
     if (!sc::decode_motor_status(mav_msg, data)) {
+      return;
+    }
+    if (
+      data.online_mask > 0x03 ||
+      std::abs(data.target_rpm_1) > 20000 ||
+      std::abs(data.target_rpm_2) > 20000 ||
+      std::abs(data.actual_rpm_1) > 20000 ||
+      std::abs(data.actual_rpm_2) > 20000)
+    {
       return;
     }
     messages::msg::SmartCarMotorStatus msg;
@@ -516,7 +598,7 @@ private:
   uint8_t host_system_{255};
   uint8_t host_component_{191};
   double control_rate_hz_{20.0};
-  int control_input_timeout_ms_{150};
+  int control_input_timeout_ms_{500};
   double max_speed_mps_{1.5};
   double max_curvature_{2.5};
 

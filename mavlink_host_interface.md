@@ -6,13 +6,42 @@
 
 ```text
 Physical port: P7 UART
-Baudrate:      115200
+Baudrate:      460800
 Format:        8N1
 Protocol:      MAVLink v2
 Signing:       Disabled
 Vehicle sysid: 1
 Vehicle compid:MAV_COMP_ID_AUTOPILOT1
 Host sysid:    255 recommended
+```
+
+Do not use 115200 baud for the smart-car MAVLink link.
+
+Python hosts should not open the serial port with `mavutil.mavlink_connection("COMx", baud=...)`.
+Some pymavlink versions briefly open the port at 1200 baud before switching to the requested baudrate,
+which can leave the current USB serial adapter or board in an abnormal state.
+
+Recommended Python serial opening pattern:
+
+```python
+import serial
+from pymavlink import mavutil
+
+ser = serial.Serial()
+ser.port = "COM8"
+ser.baudrate = 460800
+ser.timeout = 0.02
+ser.write_timeout = 0.2
+ser.dsrdtr = False
+ser.rtscts = False
+ser.xonxoff = False
+ser.dtr = False
+ser.rts = False
+ser.open()
+ser.dtr = False
+ser.rts = False
+
+mav = mavutil.mavlink.MAVLink(ser, srcSystem=255, srcComponent=190)
 ```
 
 协议定义文件：
@@ -209,6 +238,7 @@ uint8_t  motor_online_mask
 fault_flags
 warn_flags
 cmd_age_ms
+host_online
 motor_online_mask
 ```
 
@@ -222,6 +252,26 @@ FAULT_IMU_NOT_READY  = 0x00000008
 FAULT_CAN_ERROR      = 0x00000010
 FAULT_SERVO_CLAMPED  = 0x00000020
 ```
+
+`host_online` is derived from control setpoint freshness, using `CMD_TIMEOUT_MS` as the window
+(default 200 ms). Listening only, or sending only a 1 Hz heartbeat, does not keep `host_online`
+stable. While controlling the vehicle, continuously send `SMART_CAR_CONTROL_SETPOINT` at 20 Hz
+or higher.
+
+When motor feedback is disconnected or motors are offline, enabling control can produce:
+
+```text
+fault_flags = 0x00000006
+```
+
+This means:
+
+```text
+0x02 MOTOR1_OFFLINE
+0x04 MOTOR2_OFFLINE
+```
+
+This is expected safety behavior, not a MAVLink communication failure.
 
 Motor online mask：
 
@@ -464,12 +514,39 @@ They are not saved to non-volatile memory.
 
 `STEER_CENTER_DEG`、`STEER_K_SLOPE`、`STEER_K_OFFSET` 会立即影响曲率到舵机角度的转换。
 
+Validated parameter behavior:
+
+```text
+PARAM_REQUEST_READ CMD_TIMEOUT_MS returns CMD_TIMEOUT_MS=200.
+PARAM_REQUEST_LIST returns 9 parameters:
+  CMD_TIMEOUT_MS
+  MAX_SPEED_MPS
+  MAX_ACCEL_MPS2
+  MAX_CURVATURE
+  STEER_CENTER_DEG
+  STEER_K_SLOPE
+  STEER_K_OFFSET
+  MOTOR_MAX_RPM
+  GYRO_YAW_SIGN
+```
+
+Validated command/control behavior:
+
+```text
+Vehicle -> host telemetry works.
+Host -> vehicle PARAM_REQUEST works.
+Host -> vehicle SMART_CAR_COMMAND works.
+Host -> vehicle SMART_CAR_CONTROL_SETPOINT works.
+SMART_CAR_COMMAND_GYRO_CAL returns STATUSTEXT: Gyro calibration started.
+SMART_CAR_CONTROL_SETPOINT speed=0 curvature=0 produces host_online=1 while cmd_age remains fresh.
+```
+
 ## 9. Host Development Flow
 
 上位机最小控制流程：
 
 ```text
-1. Open UART at 115200 8N1.
+1. Open UART at 460800 8N1 with DTR=off and RTS=off.
 2. Load smart_car.xml as MAVLink v2 dialect.
 3. Wait for HEARTBEAT from sysid 1.
 4. Start sending SMART_CAR_CONTROL_SETPOINT at 20 Hz.
@@ -494,6 +571,10 @@ They are not saved to non-volatile memory.
 ```text
 tools/host_mavlink_smoke.py
 ```
+
+The smoke test opens the serial port directly with pyserial at 460800, keeps DTR/RTS off,
+and binds the opened serial object to pymavlink's `MAVLink` encoder/decoder. It intentionally
+does not use `mavutil.mavlink_connection()` for serial opening.
 
 示例：
 
@@ -529,7 +610,21 @@ The host should not directly control servo PWM for normal driving.
 Actuator test messages are for debug and calibration only.
 Heartbeat is not the control keepalive.
 SMART_CAR_CONTROL_SETPOINT is the control keepalive.
+Only SMART_CAR_CONTROL_SETPOINT keeps host_online stable.
 ```
+
+Telemetry rates are intentionally high:
+
+```text
+SMART_CAR_MOTION_STATE    50 Hz
+SMART_CAR_MOTOR_STATUS    20 Hz
+SMART_CAR_IMU_STATUS      20 Hz
+SMART_CAR_STATUS          10 Hz
+HEARTBEAT                 1 Hz
+```
+
+Host UI code should receive telemetry continuously in the background, but throttle UI text updates
+to about 10-20 Hz. Control setpoint transmission should run from an independent 20 Hz timer.
 
 For safe first tests:
 
