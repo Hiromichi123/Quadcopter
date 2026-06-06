@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -22,7 +23,7 @@ def generate_launch_description():
         Node(
             package='mavros',
             executable='mavros_node',
-            condition=launch.conditions.IfCondition(start_mavros),
+            condition=IfCondition(start_mavros),
             parameters=[{
                 'fcu_url': fcu_url,
                 'tgt_system': 1,
