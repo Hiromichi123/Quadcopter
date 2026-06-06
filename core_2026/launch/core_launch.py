@@ -1,14 +1,16 @@
 import os
 import launch
 from launch import LaunchDescription
-from launch.actions import TimerAction, IncludeLaunchDescription
+from launch.actions import TimerAction, IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
-from launch.substitutions import PathJoinSubstitution
+from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
+    real_robot_odom_topic = LaunchConfiguration('real_robot_odom_topic')
+
     mavros = Node(
         package='mavros',
         executable='mavros_node',
@@ -55,9 +57,16 @@ def generate_launch_description():
              parameters=[{
                 'use_simulation': False, # 仿真开关
                 'simulation_odom_topic': '/absolute_pose', # gazebo的里程计话题
-                'real_robot_odom_topic': '/aft_mapped_to_init' # PointLIO的里程计话题
+                'real_robot_odom_topic': real_robot_odom_topic # PointLIO/FastLIO的里程计话题
              }]),
-        Node(package='ros2_tools', executable='lidar_to_px4_bridge')
+        Node(
+            package='ros2_tools',
+            executable='lidar_to_px4_bridge',
+            parameters=[{
+                'real_robot_odom_topic': real_robot_odom_topic,
+                'vision_pose_topic': '/mavros/vision_pose/pose'
+            }]
+        )
     ]
 
     core = Node(
@@ -66,6 +75,11 @@ def generate_launch_description():
     )
 
     return launch.LaunchDescription([
+        DeclareLaunchArgument(
+            'real_robot_odom_topic',
+            default_value='/Odometry',
+            description='Odometry topic from PointLIO/FastLIO, for lidar_data_node and lidar_to_px4_bridge.'
+        ),
         mavros,             # ros2 run mavros mavros_node --ros-args -p fcu_url:=serial:///dev/ttyACM0:57600 -p tgt_system:=1 -p tgt_component:=1 -p fcu_protocol:=v2.0
         livox_ros_driver,   # ros2 launch livox_ros_driver2 msg_MID360_launch.py
         tf,                 # ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 1 base_link livox_frame

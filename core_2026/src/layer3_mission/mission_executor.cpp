@@ -1,5 +1,4 @@
 #include "layer3_mission/mission_executor.hpp"
-#include <cmath>
 
 using namespace fly_to_target_args;
 
@@ -18,13 +17,13 @@ MissionExecutor::MissionExecutor(
     , cmd_(cmd)
     , logger_(logger)
     , default_altitude_(default_altitude)
-    , takeoff_target_(0.0f, 0.0f, kHoverStartAltitude, 0.0f)
-    , hover_target_(0.0f, 0.0f, kHoverStartAltitude, 0.0f)
+    , takeoff_target_(0.0f, 0.0f, kHoverAltitude, 0.0f)
+    , hover_target_(0.0f, 0.0f, kHoverAltitude, 0.0f)
 {}
 
 // 主循环
 void MissionExecutor::run() {
-    RCLCPP_INFO(logger_, "[Mission] 任务开始: 原地起飞 → 1.70m~2.20m每10cm悬停8s → 降落");
+    RCLCPP_INFO(logger_, "[Mission] 任务开始: 原地起飞 → 1.70m持续发布悬停目标50s → 降落");
     while (rclcpp::ok() && current_state_ != State::DONE) {
         switch (current_state_) {
             case State::TAKEOFF:     on_takeoff();     break;
@@ -37,110 +36,38 @@ void MissionExecutor::run() {
     RCLCPP_INFO(logger_, "[Mission] 任务完成");
 }
 
-// 状态：TAKEOFF - 原地起飞到第一个高度刻度
+// 状态：TAKEOFF - 原地起飞到 1.70m
 void MissionExecutor::on_takeoff() {
     const auto s = state_.get_state();
     hover_anchor_x_ = s.x;
     hover_anchor_y_ = s.y;
     hover_anchor_yaw_ = s.yaw;
-    takeoff_target_ = Target(hover_anchor_x_, hover_anchor_y_, kHoverStartAltitude, hover_anchor_yaw_);
+    takeoff_target_ = Target(hover_anchor_x_, hover_anchor_y_, kHoverAltitude, hover_anchor_yaw_);
 
-    RCLCPP_INFO(logger_, "[TAKEOFF] 原地上升至 %.2f m", kHoverStartAltitude);
+    RCLCPP_INFO(logger_, "[TAKEOFF] 原地上升至 %.2f m", kHoverAltitude);
     fc_.fly_to_target(target = takeoff_target_);
-    hover_step_index_ = 0;
-    hover_step_start_time_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
-    set_hover_step_target();
-    hover_initialized_ = true;
-    RCLCPP_INFO(logger_, "[TAKEOFF] 到达第一个高度刻度，切换 HOVER");
+    hover_target_ = Target(hover_anchor_x_, hover_anchor_y_, kHoverAltitude, hover_anchor_yaw_);
+    hover_start_time_ = steady_clock_.now();
+    RCLCPP_INFO(logger_, "[TAKEOFF] 到达 %.2f m，切换 HOVER", kHoverAltitude);
     current_state_ = State::HOVER;
 }
 
-// 状态：HOVER - 1.70m 到 2.20m，每 10cm 刻度悬停 8s
+// 状态：HOVER - 不做稳定检查，持续发布 1.70m 原地悬停目标 50s
 void MissionExecutor::on_hover() {
-    if (!hover_initialized_) {
-        const auto s = state_.get_state();
-        hover_anchor_x_ = s.x;
-        hover_anchor_y_ = s.y;
-        hover_anchor_yaw_ = s.yaw;
-        hover_step_index_ = 0;
-        hover_step_start_time_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
-        set_hover_step_target();
-        hover_initialized_ = true;
-    }
-
-    if (hover_step_index_ >= kHoverStepCount) {
-        RCLCPP_INFO(logger_, "[HOVER] 所有高度刻度已完成，切换 LAND");
-        current_state_ = State::LAND;
-        return;
-    }
-
     const auto now = steady_clock_.now();
-    const auto s = state_.get_state();
-    if (!is_near_hover_target(s)) {
-        hover_step_start_time_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
-        RCLCPP_INFO_THROTTLE(
-            logger_, steady_clock_, 1000,
-            "[HOVER] 前往高度刻度 %.2f m",
-            hover_target_.get_z());
-        cmd_.publish_position(hover_target_);
-        return;
-    }
-
-    if (hover_step_start_time_.nanoseconds() == 0) {
-        hover_step_start_time_ = now;
-        RCLCPP_INFO(
-            logger_,
-            "[HOVER] 到达 %.2f m，开始悬停 %.1f s",
-            hover_target_.get_z(),
-            kHoverHoldSec);
-        cmd_.publish_position(hover_target_);
-        return;
-    }
-
-    const double elapsed = (now - hover_step_start_time_).seconds();
-    if (elapsed >= kHoverHoldSec) {
-        RCLCPP_INFO(logger_, "[HOVER] %.2f m 悬停完成", hover_target_.get_z());
-        ++hover_step_index_;
-        if (hover_step_index_ >= kHoverStepCount) {
-            current_state_ = State::LAND;
-            return;
-        }
-        set_hover_step_target();
-        return;
-    }
+    const double elapsed = (now - hover_start_time_).seconds();
+    cmd_.publish_position(hover_target_);
 
     RCLCPP_INFO_THROTTLE(
         logger_, steady_clock_, 1000,
-        "[HOVER] %.2f m 悬停中，剩余 %.1f s",
+        "[HOVER] 持续发布 %.2f m 原地悬停目标，剩余 %.1f s",
         hover_target_.get_z(),
-        kHoverHoldSec - static_cast<float>(elapsed));
-    cmd_.publish_position(hover_target_);
-}
+        kHoverDurationSec - static_cast<float>(elapsed));
 
-bool MissionExecutor::is_near_hover_target(const DroneState& s) const {
-    const float dx = std::fabs(s.x - hover_target_.get_x());
-    const float dy = std::fabs(s.y - hover_target_.get_y());
-    const float dz = std::fabs(s.z - hover_target_.get_z());
-    return dx <= kHoverStablePosTolXY && dy <= kHoverStablePosTolXY && dz <= kHoverStablePosTolZ;
-}
-
-float MissionExecutor::hover_altitude_for_step(std::size_t step_index) const {
-    return kHoverStartAltitude + static_cast<float>(step_index) * kHoverAltitudeStep;
-}
-
-void MissionExecutor::set_hover_step_target() {
-    hover_step_start_time_ = rclcpp::Time(0, 0, RCL_STEADY_TIME);
-    hover_target_ = Target(
-        hover_anchor_x_,
-        hover_anchor_y_,
-        hover_altitude_for_step(hover_step_index_),
-        hover_anchor_yaw_);
-    RCLCPP_INFO(
-        logger_,
-        "[HOVER] 切换到第 %zu/%zu 个高度刻度: %.2f m",
-        hover_step_index_ + 1,
-        kHoverStepCount,
-        hover_target_.get_z());
+    if (elapsed >= kHoverDurationSec) {
+        RCLCPP_INFO(logger_, "[HOVER] 已持续发布悬停目标 %.1f s，切换 LAND", elapsed);
+        current_state_ = State::LAND;
+    }
 }
 
 // 状态：LAND
