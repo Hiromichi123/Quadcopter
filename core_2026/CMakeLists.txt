@@ -29,11 +29,33 @@ set(SOURCES
   src/main.cpp
 )
 
+set(CAR_MISSION_SOURCES
+  src/layer3_mission/car_mission_executor.cpp
+)
+
+set(TEST_MAX_CURVATURE_SOURCES
+  src/layer3_mission/test_max_curvature.cpp
+)
+
 # ── 可执行文件 ────────────────────────────────────────────────
 add_executable(quad_node ${SOURCES})
+add_executable(car_mission_node ${CAR_MISSION_SOURCES})
+add_executable(test_max_curvature ${TEST_MAX_CURVATURE_SOURCES})
 
 # ── 头文件路径 ────────────────────────────────────────────────
 target_include_directories(quad_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_include_directories(car_mission_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_include_directories(test_max_curvature PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:include>
@@ -50,11 +72,31 @@ ament_target_dependencies(quad_node
   messages
 )
 
+ament_target_dependencies(car_mission_node
+  rclcpp
+  geometry_msgs
+  nav_msgs
+  std_msgs
+  mavros_msgs
+  ros2_tools
+  messages
+)
+
+ament_target_dependencies(test_max_curvature
+  rclcpp
+  geometry_msgs
+  nav_msgs
+  std_msgs
+  mavros_msgs
+  ros2_tools
+  messages
+)
+
 # ── RPATH 设置 ────────────────────────────────────────────────
 set(CMAKE_INSTALL_RPATH /usr/local/lib)
 
 # ── 安装 ──────────────────────────────────────────────────────
-install(TARGETS quad_node DESTINATION lib/${PROJECT_NAME})
+install(TARGETS quad_node car_mission_node test_max_curvature DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/)
 
 ament_package()

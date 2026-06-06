@@ -11,13 +11,14 @@ def generate_launch_description():
     start_mavros = LaunchConfiguration('start_mavros')
 
     return LaunchDescription([
-        DeclareLaunchArgument('fcu_url', default_value='serial:///dev/ttyUSB0:115200'),
+        DeclareLaunchArgument('fcu_url', default_value='serial:///dev/ttyS0:460800'),
         DeclareLaunchArgument('platform_mode', default_value='car'),
         DeclareLaunchArgument('start_mavros', default_value='true'),
         Node(
             package='mavros',
             executable='mavros_node',
             condition=IfCondition(start_mavros),
+            namespace='mavros',
             parameters=[{
                 'fcu_url': fcu_url,
                 'tgt_system': 1,
@@ -39,8 +40,8 @@ def generate_launch_description():
                 'target_component': 0,
                 'host_system': 255,
                 'host_component': 191,
-                'control_rate_hz': 20.0,
-                'control_input_timeout_ms': 150,
+                'control_rate_hz': 50.0,
+                'control_input_timeout_ms': 500,
                 'max_speed_mps': 1.5,
                 'max_curvature': 2.5,
             }],

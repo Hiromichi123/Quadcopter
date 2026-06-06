@@ -248,7 +248,7 @@ inline bool decode_status(const mavlink::mavlink_message_t & msg, Status & data)
 
 inline bool decode_motion_state(const mavlink::mavlink_message_t & msg, MotionState & data)
 {
-  if (msg.msgid != MSG_ID_SMART_CAR_MOTION_STATE || msg.len < 35) {
+  if (msg.msgid != MSG_ID_SMART_CAR_MOTION_STATE || msg.len < 34) {
     return false;
   }
   mavlink::MsgMap map(&msg);
@@ -261,7 +261,11 @@ inline bool decode_motion_state(const mavlink::mavlink_message_t & msg, MotionSt
   map >> data.curvature_cmd;
   map >> data.steering_angle_deg;
   map >> data.steering_pwm_us;
-  map >> data.steering_clamped;
+  if (msg.len >= 35) {
+    map >> data.steering_clamped;
+  } else {
+    data.steering_clamped = 0;
+  }
   return true;
 }
 
