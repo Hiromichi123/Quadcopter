@@ -57,9 +57,16 @@ void DroneSystem::run() {
 
 // 起飞前检查
 void DroneSystem::pre_flight_checks() {
-    RCLCPP_INFO(hal_->get_logger(), "[PreFlight] 等待 FCU 连接...");
-    while (rclcpp::ok() && !hal_->get_mavros_state().connected) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    RCLCPP_INFO(
+        hal_->get_logger(),
+        "[PreFlight] 平台模式: %s",
+        hal_->get_platform_mode_name().c_str());
+
+    if (hal_->requires_mavros_preflight()) {
+        RCLCPP_INFO(hal_->get_logger(), "[PreFlight] 等待 FCU 连接...");
+        while (rclcpp::ok() && !hal_->get_mavros_state().connected) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
     }
 
     RCLCPP_INFO(hal_->get_logger(), "[PreFlight] 等待定位状态 lidar_data...");
@@ -70,9 +77,17 @@ void DroneSystem::pre_flight_checks() {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
+    if (!hal_->requires_mavros_preflight()) {
+        RCLCPP_INFO(
+            hal_->get_logger(),
+            "[PreFlight] 当前平台不需要 PX4 OFFBOARD/arming，定位已就绪，进入任务");
+        return;
+    }
+
     // 预发布 setpoint
     // PX4 要求进入 OFFBOARD 前持续发送至少 2Hz，持续 0.5s+
-    Target hold(0.0f, 0.0f, 0.5f, 0.0f);
+    const auto current_state = hal_->get_state();
+    Target hold(current_state.x, current_state.y, 0.5f, current_state.yaw);
     rclcpp::Rate rate(20);
 
     rclcpp::Time last_request = hal_->now();
@@ -105,7 +120,6 @@ void DroneSystem::pre_flight_checks() {
             last_request = hal_->now();
         } else if (ms.armed && ms.mode == "OFFBOARD") {
             RCLCPP_INFO(hal_->get_logger(), "[PreFlight] Armed + OFFBOARD 成功！");
-            fc_->fly_to_target(target = hold); // 起飞至初始点hold（阻塞）
             break;
         }
         

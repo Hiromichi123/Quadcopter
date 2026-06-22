@@ -2,6 +2,7 @@ import os
 import launch
 from launch import LaunchDescription
 from launch.actions import TimerAction, IncludeLaunchDescription, DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
@@ -9,13 +10,17 @@ from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
+    fcu_url = LaunchConfiguration('fcu_url')
+    start_mavros = LaunchConfiguration('start_mavros')
     real_robot_odom_topic = LaunchConfiguration('real_robot_odom_topic')
+    platform_mode = LaunchConfiguration('platform_mode')
 
     mavros = Node(
         package='mavros',
         executable='mavros_node',
+        condition=IfCondition(start_mavros),
         parameters=[{
-            'fcu_url': 'serial:///dev/ttyACM0:57600',
+            'fcu_url': fcu_url,
             'tgt_system': 1,
             'tgt_component': 1,
             'fcu_protocol': 'v2.0'
@@ -72,6 +77,12 @@ def generate_launch_description():
     core = Node(
         package='core_2026',
         executable='quad_node',
+        parameters=[{
+            'platform_mode': platform_mode,
+            'platform_target_topic': '/platform/target',
+            'position_setpoint_topic': '/mavros/setpoint_position/local',
+            'velocity_setpoint_topic': '/mavros/setpoint_velocity/cmd_vel',
+        }],
     )
 
     return launch.LaunchDescription([
@@ -79,6 +90,21 @@ def generate_launch_description():
             'real_robot_odom_topic',
             default_value='/Odometry',
             description='Odometry topic from PointLIO/FastLIO, for lidar_data_node and lidar_to_px4_bridge.'
+        ),
+        DeclareLaunchArgument(
+            'platform_mode',
+            default_value='px4_drone',
+            description='Control backend: px4_drone, px4_diff_car, or custom_ackermann.'
+        ),
+        DeclareLaunchArgument(
+            'fcu_url',
+            default_value='serial:///dev/ttyACM0:57600',
+            description='MAVROS FCU URL used when start_mavros is true.'
+        ),
+        DeclareLaunchArgument(
+            'start_mavros',
+            default_value='true',
+            description='Start MAVROS from this launch file.'
         ),
         mavros,             # ros2 run mavros mavros_node --ros-args -p fcu_url:=serial:///dev/ttyACM0:57600 -p tgt_system:=1 -p tgt_component:=1 -p fcu_protocol:=v2.0
         livox_ros_driver,   # ros2 launch livox_ros_driver2 msg_MID360_launch.py

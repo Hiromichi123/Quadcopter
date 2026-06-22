@@ -284,8 +284,62 @@ source ~/.bashrc
 - 飞行控制消息
 - 视觉数据消息
 - 系统状态消息
+- `PlatformTarget`: 任务层到多平台控制后端的统一目标接口
+
+### smart_car_bridge
+**语言**: C++  
+**功能**: 自定义 MAVLink 阿克曼车协议桥接
+
+- 订阅 `/platform/target` 或 `/smart_car/control_setpoint`
+- 通过 MAVROS raw MAVLink 通道收发 `smart_car.xml` 自定义消息
+- 发布 `/smart_car/status`、`/smart_car/motion_state` 等强类型遥测
 
 ## 🚀 快速开始
+
+### core_2026 多平台切换
+
+`core_2026` 的任务层仍然发布 `Target` / `Velocity`，差异由 `DroneHAL` 的 `platform_mode` 参数吸收：
+
+| 模式 | 参数值 | 控制输出 | 适用下位机 |
+|------|--------|----------|------------|
+| PX4 MAVROS 无人机 | `px4_drone` | `/mavros/setpoint_position/local`、`/mavros/setpoint_velocity/cmd_vel` | PX4 多旋翼 |
+| PX4 MAVROS 差速车 | `px4_diff_car` | `/mavros/setpoint_velocity/cmd_vel`，忽略 z 轴 | PX4 Rover / 差速车固件 |
+| 自定义协议阿克曼车 | `custom_ackermann` | `/platform/target`，由 `smart_car_bridge` 转为 `SMART_CAR_CONTROL_SETPOINT` | `smart_car.xml` 自定义协议车 |
+
+常用启动方式：
+
+```bash
+# 1. PX4 MAVROS 无人机，完整感知 + MAVROS + core_2026
+ros2 launch core_2026 core_launch.py \
+  platform_mode:=px4_drone \
+  fcu_url:=serial:///dev/ttyACM0:57600 \
+  real_robot_odom_topic:=/Odometry
+
+# 2. PX4 MAVROS 差速车，任务层不改，HAL 将位置目标转为平面速度
+ros2 launch core_2026 core_launch.py \
+  platform_mode:=px4_diff_car \
+  fcu_url:=serial:///dev/ttyACM0:57600 \
+  real_robot_odom_topic:=/Odometry
+
+# 3. 自定义协议阿克曼车，桥接节点负责串口/MAVLink，自定义车不走 PX4 arming
+ros2 launch smart_car_bridge smart_car_bridge.launch.py \
+  platform_mode:=car \
+  fcu_url:=serial:///dev/ttyUSB0:115200
+
+ros2 launch core_2026 core_launch.py \
+  platform_mode:=custom_ackermann \
+  start_mavros:=false \
+  real_robot_odom_topic:=/Odometry
+```
+
+检查链路：
+
+```bash
+ros2 param get /drone_hal_node platform_mode
+ros2 topic hz /mavros/setpoint_velocity/cmd_vel
+ros2 topic hz /platform/target
+ros2 topic echo /smart_car/status
+```
 
 ### 启动飞行控制系统
 

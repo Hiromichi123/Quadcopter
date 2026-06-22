@@ -14,6 +14,7 @@
 #include <std_msgs/msg/string.hpp>
 
 #include "ros2_tools/msg/lidar_pose.hpp"
+#include "messages/msg/platform_target.hpp"
 #include "messages/msg/vision.hpp"
 
 #include "layer1_hal/i_state_provider.hpp"
@@ -49,6 +50,7 @@ public:
     // 指令发布接口 ICommandPublisher
     void publish_position(Target& target)   override;
     void publish_velocity(Velocity& velocity) override;
+    [[nodiscard]] bool uses_planar_position_control() const override;
 
     // 视觉结果提供接口 IVisionProvider
     [[nodiscard]] messages::msg::Vision get_vision() const override;
@@ -65,8 +67,16 @@ public:
 
     // 查询 MAVROS 状态
     [[nodiscard]] mavros_msgs::msg::State get_mavros_state() const;
+    [[nodiscard]] bool requires_mavros_preflight() const;
+    [[nodiscard]] std::string get_platform_mode_name() const;
 
 private:
+    enum class PlatformMode {
+        Px4MavrosDrone,
+        Px4MavrosDiffCar,
+        CustomAckermannCar
+    };
+
     // ===== 回调组 =====
     void lidar_cb(const ros2_tools::msg::LidarPose::SharedPtr msg);
     void state_cb(const mavros_msgs::msg::State::SharedPtr msg);
@@ -76,11 +86,20 @@ private:
 
     static bool extract_json_int64(const std::string& json, const std::string& key, int64_t& out);
     static bool extract_json_bool(const std::string& json, const std::string& key, bool& out);
+    static PlatformMode parse_platform_mode(const std::string& mode_name);
+    static float normalize_angle(float angle_rad);
     void log_dvs_pipeline_latency_if_applicable(const char* command_type);
+    void publish_px4_drone_position(Target& target);
+    void publish_px4_drone_velocity(Velocity& velocity);
+    void publish_car_position_target(const Target& target, bool use_custom_ackermann);
+    void publish_car_velocity_target(Velocity& velocity, bool use_custom_ackermann);
+    messages::msg::PlatformTarget make_platform_target_from_position(const Target& target) const;
+    messages::msg::PlatformTarget make_platform_target_from_velocity(const Velocity& velocity) const;
 
     // ===== 发布器组 =====
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr  pos_pub_;
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr vel_pub_;
+    rclcpp::Publisher<messages::msg::PlatformTarget>::SharedPtr    platform_target_pub_;
 
     // ===== 订阅器 =====
     rclcpp::Subscription<ros2_tools::msg::LidarPose>::SharedPtr    lidar_sub_;
@@ -115,4 +134,15 @@ private:
     // MAVRos状态
     mutable std::mutex      mavros_mutex_;
     mavros_msgs::msg::State mavros_state_{};
+
+    PlatformMode platform_mode_{PlatformMode::Px4MavrosDrone};
+    std::string platform_mode_name_{"px4_drone"};
+    std::string position_setpoint_topic_{"/mavros/setpoint_position/local"};
+    std::string velocity_setpoint_topic_{"/mavros/setpoint_velocity/cmd_vel"};
+    std::string platform_target_topic_{"/platform/target"};
+    float car_position_kp_speed_{0.8f};
+    float car_yaw_kp_{1.5f};
+    float car_max_speed_mps_{0.6f};
+    float car_max_yaw_rate_radps_{1.0f};
+    float car_xy_tolerance_m_{0.08f};
 };

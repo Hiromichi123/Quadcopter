@@ -37,10 +37,15 @@ set(TEST_MAX_CURVATURE_SOURCES
   src/layer3_mission/test_max_curvature.cpp
 )
 
+set(DIFF_CAR_TEST_MISSION_SOURCES
+  src/layer3_mission/diff_car_test_mission.cpp
+)
+
 # ── 可执行文件 ────────────────────────────────────────────────
 add_executable(quad_node ${SOURCES})
 add_executable(car_mission_node ${CAR_MISSION_SOURCES})
 add_executable(test_max_curvature ${TEST_MAX_CURVATURE_SOURCES})
+add_executable(diff_car_test_mission ${DIFF_CAR_TEST_MISSION_SOURCES})
 
 # ── 头文件路径 ────────────────────────────────────────────────
 target_include_directories(quad_node PUBLIC
@@ -56,6 +61,12 @@ target_include_directories(car_mission_node PUBLIC
 )
 
 target_include_directories(test_max_curvature PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_include_directories(diff_car_test_mission PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:include>
@@ -92,11 +103,18 @@ ament_target_dependencies(test_max_curvature
   messages
 )
 
+ament_target_dependencies(diff_car_test_mission
+  rclcpp
+  geometry_msgs
+  mavros_msgs
+  ros2_tools
+)
+
 # ── RPATH 设置 ────────────────────────────────────────────────
 set(CMAKE_INSTALL_RPATH /usr/local/lib)
 
 # ── 安装 ──────────────────────────────────────────────────────
-install(TARGETS quad_node car_mission_node test_max_curvature DESTINATION lib/${PROJECT_NAME})
+install(TARGETS quad_node car_mission_node test_max_curvature diff_car_test_mission DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/)
 
 ament_package()

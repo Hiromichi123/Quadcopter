@@ -16,4 +16,7 @@ public:
 
     // 发布速度设定点（TwistStamped topic）
     virtual void publish_velocity(Velocity& velocity) = 0;
+
+    // 平面平台忽略任务目标中的 z 轴到点判定。
+    virtual bool uses_planar_position_control() const { return false; }
 };

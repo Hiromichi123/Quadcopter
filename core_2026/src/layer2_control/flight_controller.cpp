@@ -172,11 +172,12 @@ void FlightController::set_pid_config_impl(PidConfig cfg) { pid_cfg_ = cfg; }
 // 位置检查（球径）
 bool FlightController::pos_check(const Target& target, float distance) {
     const DroneState s = state_.get_state();
+    const bool planar = cmd_.uses_planar_position_control();
 
     float dist = std::sqrt(
         std::pow(s.x - target.get_x(), 2) +
         std::pow(s.y - target.get_y(), 2) +
-        std::pow(s.z - target.get_z(), 2));
+        (planar ? 0.0f : std::pow(s.z - target.get_z(), 2)));
 
     const float yaw_error = std::fabs(shortest_angular_error(target.get_yaw(), s.yaw));
     RCLCPP_INFO_THROTTLE(logger_, *clock_, 2000, "距目标: %.3f m", dist);
@@ -189,9 +190,10 @@ bool FlightController::pos_check(
     float distance_x, float distance_y, float distance_z)
 {
     const DroneState s = state_.get_state();
+    const bool planar = cmd_.uses_planar_position_control();
     const float yaw_error = std::fabs(shortest_angular_error(target.get_yaw(), s.yaw));
     return std::abs(s.x - target.get_x()) < distance_x &&
            std::abs(s.y - target.get_y()) < distance_y &&
-           std::abs(s.z - target.get_z()) < distance_z &&
+           (planar || std::abs(s.z - target.get_z()) < distance_z) &&
            yaw_error < 0.1f;
 }
