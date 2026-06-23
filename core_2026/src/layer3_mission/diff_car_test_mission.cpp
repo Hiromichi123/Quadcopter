@@ -67,8 +67,15 @@ public:
             });
 
         cmd_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>(cmd_vel_topic_, 10);
-        arming_client_ = create_client<mavros_msgs::srv::CommandBool>("/mavros/cmd/arming");
-        set_mode_client_ = create_client<mavros_msgs::srv::SetMode>("/mavros/set_mode");
+        service_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+        arming_client_ = create_client<mavros_msgs::srv::CommandBool>(
+            "/mavros/cmd/arming",
+            rmw_qos_profile_services_default,
+            service_callback_group_);
+        set_mode_client_ = create_client<mavros_msgs::srv::SetMode>(
+            "/mavros/set_mode",
+            rmw_qos_profile_services_default,
+            service_callback_group_);
         timer_ = create_wall_timer(
             std::chrono::milliseconds(50),
             [this]() { on_timer(); });
@@ -332,6 +339,7 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_pub_;
     rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedPtr arming_client_;
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
+    rclcpp::CallbackGroup::SharedPtr service_callback_group_;
     rclcpp::TimerBase::SharedPtr timer_;
     mavros_msgs::msg::State mavros_state_{};
     rclcpp::Time last_request_time_{0, 0, RCL_ROS_TIME};
@@ -340,7 +348,10 @@ private:
 int main(int argc, char * argv[])
 {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<DiffCarTestMission>());
+    auto node = std::make_shared<DiffCarTestMission>();
+    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 2);
+    executor.add_node(node);
+    executor.spin();
     rclcpp::shutdown();
     return 0;
 }
