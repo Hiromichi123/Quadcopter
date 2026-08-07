@@ -26,7 +26,7 @@
 本项目是一个完整的四旋翼无人机飞行控制系统，致力于打造最优秀的开源飞控库。系统集成了以下核心技术栈：
 
 - **ROS2 Humble**: 机器人操作系统框架
-- **MAVROS2**: MAVLink通信协议支持
+- **Optional transport bridges**: Host-vehicle integration (MAVLink implementation removed)
 - **OpenCV**: 计算机视觉处理
 - **PCL**: 点云处理
 - **RealSense**: 深度相机支持
@@ -45,8 +45,7 @@
 │                  ROS2 Communication Layer                   │
 │              (Topics, Services, Parameters)                 │
 ├─────────────────────────────────────────────────────────────┤
-│                      MAVROS Interface                       │
-│                     (MAVLink Protocol)                      │
+│                  Host-Vehicle Bridge (transport-agnostic)   │
 ├─────────────────────────────────────────────────────────────┤
 │                      Flight Controller                      │
 │                        (PX4/ArduPilot)                      │
@@ -143,15 +142,9 @@ pip install git+https://github.com/colcon/colcon-ros-cargo.git
 sudo apt install -y git libclang-dev python3-pip python3-vcstool
 ```
 
-### 4. 安装MAVROS
+### 4. 可选：安装外部桥接工具
 
-```bash
-sudo apt install ros-humble-mavros ros-humble-mavros-extras
-# 安装GeographicLib数据集
-wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh
-chmod +x install_geographiclib_datasets.sh
-sudo ./install_geographiclib_datasets.sh
-```
+本仓库已移除对 MAVLink 协议的直接实现。如果需要与特定下位机协议对接，请使用独立的桥接工具或自行实现适配层。
 
 ### 5. 克隆并编译项目
 
@@ -288,10 +281,10 @@ source ~/.bashrc
 
 ### smart_car_bridge
 **语言**: C++  
-**功能**: 自定义 MAVLink 阿克曼车协议桥接
+**功能**: 主机与智能小车的桥接（传输/协议无关）
 
 - 订阅 `/platform/target` 或 `/smart_car/control_setpoint`
-- 通过 MAVROS raw MAVLink 通道收发 `smart_car.xml` 自定义消息
+- 将接收到的目标转换为车辆适配层（串口/CAN/自定义传输）
 - 发布 `/smart_car/status`、`/smart_car/motion_state` 等强类型遥测
 
 ## 🚀 快速开始
@@ -304,7 +297,7 @@ source ~/.bashrc
 |------|--------|----------|------------|
 | PX4 MAVROS 无人机 | `px4_drone` | `/mavros/setpoint_position/local`、`/mavros/setpoint_velocity/cmd_vel` | PX4 多旋翼 |
 | PX4 MAVROS 差速车 | `px4_diff_car` | `/mavros/setpoint_velocity/cmd_vel`，忽略 z 轴 | PX4 Rover / 差速车固件 |
-| 自定义协议阿克曼车 | `custom_ackermann` | `/platform/target`，由 `smart_car_bridge` 转为 `SMART_CAR_CONTROL_SETPOINT` | `smart_car.xml` 自定义协议车 |
+| 自定义协议阿克曼车 | `custom_ackermann` | `/platform/target`，由 `smart_car_bridge` 转为车辆适配层 | 车辆适配器实现对应传输 |
 
 常用启动方式：
 
@@ -321,14 +314,15 @@ ros2 launch core_2026 core_launch.py \
   fcu_url:=serial:///dev/ttyACM0:57600 \
   real_robot_odom_topic:=/Odometry
 
-# 3. 自定义协议阿克曼车，桥接节点负责串口/MAVLink，自定义车不走 PX4 arming
+# 3. 自定义协议阿克曼车，桥接节点负责将平台目标适配为车辆可理解的传输
 ros2 launch smart_car_bridge smart_car_bridge.launch.py \
   platform_mode:=car \
-  fcu_url:=serial:///dev/ttyUSB0:115200
+  transport:=serial \
+  serial_port:=/dev/ttyUSB0 \
+  serial_baud:=115200
 
 ros2 launch core_2026 core_launch.py \
   platform_mode:=custom_ackermann \
-  start_mavros:=false \
   real_robot_odom_topic:=/Odometry
 ```
 

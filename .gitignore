@@ -1,7 +1,11 @@
 .vscode
+.agents
+.codex
 **/.cargo/
+
 /build
 /install
 /log
+
 *.pyc
 __pycache__/

@@ -28,7 +28,7 @@ This project provides a complete quadcopter control stack, designed for practica
 Core technologies include:
 
 - **ROS2 Humble**: robotics middleware
-- **MAVROS2**: MAVLink communication bridge
+- **Optional transport bridges**: Host-vehicle integration (MAVLink implementation removed)
 - **OpenCV**: computer vision
 - **PCL**: point cloud processing
 - **RealSense**: depth camera support
@@ -46,8 +46,7 @@ Core technologies include:
 │                  ROS2 Communication Layer                   │
 │              (Topics, Services, Parameters)                 │
 ├─────────────────────────────────────────────────────────────┤
-│                      MAVROS Interface                       │
-│                     (MAVLink Protocol)                      │
+│                  Host-Vehicle Bridge (transport-agnostic)   │
 ├─────────────────────────────────────────────────────────────┤
 │                      Flight Controller                      │
 │                        (PX4/ArduPilot)                      │
@@ -138,14 +137,9 @@ pip install git+https://github.com/colcon/colcon-ros-cargo.git
 sudo apt install -y git libclang-dev python3-pip python3-vcstool
 ```
 
-### 4. Install MAVROS
+### 4. Optional: external bridge tools
 
-```bash
-sudo apt install ros-humble-mavros ros-humble-mavros-extras
-wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh
-chmod +x install_geographiclib_datasets.sh
-sudo ./install_geographiclib_datasets.sh
-```
+This repository has removed direct MAVLink protocol implementations. If you need to integrate with specific vehicle firmware, use a separate bridge tool or implement an adapter layer.
 
 ### 5. Clone and build
 
